@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: workbench-postgres
+    environment:
+      POSTGRES_USER: workbench
+      POSTGRES_PASSWORD: workbench
+      POSTGRES_DB: workbench
+    ports:
+      - "5433:5432"
+    volumes:
+      - workbench-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workbench -d workbench"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  localstack:
+    # Pinned to the 4.x community line: the 2026 "latest" images require a
+    # LocalStack Pro auth token even for core services.
+    image: localstack/localstack:4.6
+    container_name: workbench-localstack
+    environment:
+      SERVICES: s3,sqs
+      DEBUG: 0
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health | grep -q '\"sqs\": \"\\(running\\|available\\)\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  workbench-pgdata:
