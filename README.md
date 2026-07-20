@@ -1,5 +1,7 @@
 # Enterprise AI Implementation Workbench
 
+[![CI](https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/actions/workflows/ci.yml/badge.svg)](https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/actions/workflows/ci.yml)
+
 A multi-tenant internal platform for software implementation teams: it turns messy customer requirements into AI-drafted implementation plans, routes every AI output through **human approval**, materializes approved plans into milestone/task delivery boards, and keeps a complete audit trail — on an **AWS-native backbone** (PostgreSQL, S3, SQS, Bedrock) that runs 100% locally via Docker + LocalStack with zero cloud cost.
 
 > **TL;DR demo flow:** capture requirements → queue an AI scoping job (SQS → worker → Bedrock/Claude) → schema-validated plan lands in the approval queue → an implementation manager approves it → milestones & tasks appear on the delivery board → an AI-drafted customer status update goes through the same approval gate before the customer role can see it → everything is in the audit log.
