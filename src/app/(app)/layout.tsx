@@ -14,6 +14,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", permission: null },
   { href: "/projects", label: "Projects", permission: null },
   { href: "/approvals", label: "Approvals", permission: "internal.view" },
+  { href: "/insights", label: "Insights", permission: "audit.view" },
   { href: "/audit", label: "Audit Log", permission: "audit.view" },
   { href: "/ops", label: "Operations", permission: "ops.view" },
   { href: "/settings/members", label: "Members", permission: "org.manage_members" },

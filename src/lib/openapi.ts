@@ -63,6 +63,18 @@ export function buildOpenApiDocument() {
     },
     security: [{ sessionCookie: [] }],
     paths: {
+      "/api/health": {
+        get: {
+          tags: ["System"],
+          summary:
+            "Liveness/readiness probe (public). 200 healthy, 503 degraded; reports database and queue status independently.",
+          security: [],
+          responses: {
+            "200": jsonResponse("All dependencies healthy"),
+            "503": jsonResponse("One or more dependencies degraded"),
+          },
+        },
+      },
       "/api/auth/login": {
         post: {
           tags: ["Auth"],

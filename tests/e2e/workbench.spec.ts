@@ -37,12 +37,14 @@ test.describe("authentication & RBAC", () => {
     await login(page, "customer@brightlane.dev");
     const nav = page.getByRole("navigation");
     await expect(nav.getByRole("link", { name: "Projects" })).toBeVisible();
-    for (const label of ["Approvals", "Audit Log", "Operations", "Members"]) {
+    for (const label of ["Approvals", "Insights", "Audit Log", "Operations", "Members"]) {
       await expect(nav.getByRole("link", { name: label })).toHaveCount(0);
     }
-    // Direct navigation to internal APIs is also denied.
+    // Direct navigation to internal pages/APIs is also denied.
     const res = await page.request.get("/api/v1/audit");
     expect(res.status()).toBe(403);
+    await page.goto("/insights");
+    await expect(page).toHaveURL(/\/dashboard/);
   });
 });
 
@@ -98,6 +100,23 @@ test.describe("seeded delivery data", () => {
     await expect(page.getByText("dead letter").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   });
+
+  test("insights page surfaces AI quality and delivery metrics", async ({ page }) => {
+    await login(page, "manager@northwind.dev");
+    await page
+      .getByRole("navigation", { name: "Main" })
+      .getByRole("link", { name: "Insights" })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "AI output quality" }),
+    ).toBeVisible();
+    await expect(page.getByText("Plan approval rate")).toBeVisible();
+    await expect(page.getByText("Quality by prompt version")).toBeVisible();
+    await expect(page.getByText("plan-v1.0")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Delivery health" }),
+    ).toBeVisible();
+  });
 });
 
 test.describe("API contract", () => {
@@ -109,6 +128,15 @@ test.describe("API contract", () => {
     expect(Object.keys(doc.paths)).toContain(
       "/api/v1/approvals/{approvalId}/decision",
     );
+  });
+
+  test("health endpoint reports dependency status without auth", async ({ request }) => {
+    const res = await request.get("/api/health");
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("healthy");
+    expect(body.checks.database.ok).toBe(true);
+    expect(body.checks.queue.ok).toBe(true);
   });
 });
 

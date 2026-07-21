@@ -16,7 +16,7 @@ The app is developed against LocalStack, but every integration uses the real AWS
 | `workbench-documents` | S3 | Block all public access; SSE-S3 encryption is on by default | Effectively free at demo scale |
 | `workbench-jobs` + `workbench-jobs-dlq` | SQS | Same redrive policy as `scripts/localstack-init.sh` (maxReceiveCount 5, visibility 120s) | 1M requests/month always free |
 | Claude model access | Bedrock | Console → Bedrock → Model access → enable Anthropic Claude models | Pay-per-token only |
-| App hosting | App Runner (simplest) or ECS Fargate | Container from the Next.js standalone build | ~$5–15/mo smallest sizes |
+| App hosting | App Runner (simplest) or ECS Fargate | Container from the Next.js standalone build; point the health check at `GET /api/health` | ~$5–15/mo smallest sizes |
 | Worker | ECS Fargate service (0.25 vCPU) running `npm run worker`, or refactor the handler into an SQS-triggered Lambda | Fargate ~$9/mo; Lambda ~free at demo volume |
 
 The SQS redrive policy in `scripts/localstack-init.sh` is the exact spec to mirror; it doubles as infrastructure documentation.

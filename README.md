@@ -138,14 +138,25 @@ Auth is a `workbench_session` httpOnly cookie (HS256 JWT, 12h). Async operations
 ## Testing & CI
 
 ```bash
-npm test          # 26 unit tests: RBAC matrix, plan schema, prompt envelope, backoff, sessions, mock provider
-npm run test:e2e  # Playwright: auth, RBAC visibility, seeded flows, OpenAPI contract
+npm test          # 37 unit tests: RBAC matrix, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations
+npm run test:e2e  # Playwright: auth, RBAC visibility, seeded flows, insights, health, OpenAPI contract
 E2E_WORKER=1 npx playwright test  # + full async generate→approve→board flow (needs worker running)
 ```
 
 GitHub Actions runs lint, typecheck, unit tests, and build, plus the Playwright suite against a real Postgres service container on every push/PR ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
-## Reliability features
+## Insights & evals
+
+An **Insights** dashboard (`/insights`, admin + manager only) turns the audit and job data into a quality/observability view — the difference between "AI demo" and "AI in production":
+
+- **AI output quality:** plan approval rate, avg approval turnaround, generation success rate, avg latency
+- **Rejection-reason breakdown:** the reviewer reason codes captured on every rejection — the signal that drives prompt iteration
+- **Quality by prompt version:** approval outcomes grouped by the `promptVersion` stamped on each plan, so output drift is attributable as prompts evolve
+- **Delivery health:** projects by stage, tasks by status, requirements/plans/updates volume
+
+The aggregation math lives in pure, unit-tested functions in [`src/server/services/insights.ts`](src/server/services/insights.ts) — verifiable without a database.
+
+## Reliability & operability
 
 - Exponential backoff retries with SQS delayed delivery; attempts tracked per job
 - Dead-letter parking after `maxAttempts`, surfaced in the UI with one-click manual retry (audited)
@@ -153,6 +164,7 @@ GitHub Actions runs lint, typecheck, unit tests, and build, plus the Playwright 
 - Structured pino logs with request IDs on every API call and job attempt
 - Uniform JSON error envelope (`{ error, requestId }`) with zod issue details on 400s
 - Seeded failure state (a throttled dead-letter job) so the ops story is visible in the demo
+- `GET /api/health` — public liveness/readiness probe reporting database and queue status independently (200 healthy / 503 degraded), ready for an App Runner / ECS health check
 
 ## Deploying to real AWS
 

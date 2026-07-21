@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/openapi.json"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/api/auth/login",
+  "/api/openapi.json",
+  "/api/health",
+];
 
 /**
  * Coarse route protection (Next.js proxy convention, formerly middleware):
