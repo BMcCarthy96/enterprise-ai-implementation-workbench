@@ -130,6 +130,10 @@ Sign in with any demo account (password `demo1234`):
 
 **Suggested demo:** sign in as `engineer` → open *Patient Onboarding Portal* → Plan tab → *Generate implementation plan* (watch the job go queued → running on the Ops page) → sign in as `manager` → Approvals → review & approve → Board tab now has the materialized tasks → Updates tab → *Draft customer update* → approve it → sign in as `customer@brightlane.dev` to see exactly what an external stakeholder sees.
 
+## Global search
+
+A **⌘K / Ctrl+K command palette** (in the sidebar of every authenticated page) searches projects, requirements, and customers in one keystroke — debounced, keyboard-navigable, and org-scoped. Result types are gated by role in the same place the API is: a customer stakeholder can only ever match projects, never the customer directory or internal requirements. The query logic lives behind [`GET /api/v1/search`](src/app/api/v1/search/route.ts), with the role-gating and wildcard-escaping helpers unit-tested in isolation.
+
 ## API
 
 The REST surface is documented as OpenAPI 3.1 generated **from the same zod schemas the handlers validate with** — docs can't drift from behavior: [`GET /api/openapi.json`](http://localhost:3000/api/openapi.json).
@@ -139,8 +143,8 @@ Auth is a `workbench_session` httpOnly cookie (HS256 JWT, 12h). Async operations
 ## Testing & CI
 
 ```bash
-npm test          # 44 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff
-npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff, insights, health, CSV export, OpenAPI contract
+npm test          # 49 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff, search gating
+npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff, insights, global search, health, CSV export, OpenAPI contract
 E2E_WORKER=1 npx playwright test  # + full async generate→approve→board flow (needs worker running)
 ```
 

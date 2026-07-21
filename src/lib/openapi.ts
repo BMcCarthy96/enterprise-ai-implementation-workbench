@@ -96,6 +96,25 @@ export function buildOpenApiDocument() {
           responses: { "200": jsonResponse("Signed out") },
         },
       },
+      "/api/v1/search": {
+        get: {
+          tags: ["Search"],
+          summary:
+            "Global search across projects, requirements, and customers (org-scoped; result types gated by role). Minimum query length 2.",
+          parameters: [
+            {
+              name: "q",
+              in: "query",
+              required: true,
+              schema: { type: "string", minLength: 2 },
+            },
+          ],
+          responses: {
+            "200": jsonResponse("{ query, results[] }"),
+            ...STD,
+          },
+        },
+      },
       "/api/v1/customers": {
         get: {
           tags: ["Customers"],

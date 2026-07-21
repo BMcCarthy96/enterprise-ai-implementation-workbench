@@ -133,6 +133,76 @@ test.describe("seeded delivery data", () => {
   });
 });
 
+test.describe("global search palette", () => {
+  test("opens from the sidebar and navigates to a matched project", async ({ page }) => {
+    await login(page, "engineer@northwind.dev");
+    await page.getByRole("button", { name: "Open search" }).click();
+    const dialog = page.getByRole("dialog", { name: "Global search" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("textbox", { name: "Search query" }).fill("Order Intake");
+    // The project title also appears as the subtitle of matched requirements, so
+    // target the project result specifically via its "in delivery" status line.
+    const projectHit = dialog.getByRole("button", {
+      name: /Order Intake Automation.*in delivery/,
+    });
+    await expect(projectHit).toBeVisible();
+    await projectHit.click();
+    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
+    await expect(
+      page.getByRole("heading", { name: "Order Intake Automation" }),
+    ).toBeVisible();
+  });
+
+  test("keyboard shortcut opens the palette and Escape closes it", async ({ page }) => {
+    await login(page, "manager@northwind.dev");
+    const dialog = page.getByRole("dialog", { name: "Global search" });
+    // Open via the button first: a working onClick proves the client component
+    // has hydrated, so the window key listener (same effect lifecycle) is live.
+    await page.getByRole("button", { name: "Open search" }).click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    // Now the ⌘K / Ctrl+K shortcut.
+    await page.keyboard.press("ControlOrMeta+KeyK");
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test("a requirement match lands on the project's requirements tab", async ({ page }) => {
+    await login(page, "engineer@northwind.dev");
+    await page.getByRole("button", { name: "Open search" }).click();
+    const dialog = page.getByRole("dialog", { name: "Global search" });
+    await dialog
+      .getByRole("textbox", { name: "Search query" })
+      .fill("carrier assignment");
+    const hit = dialog.getByText("Automated carrier assignment rules");
+    await expect(hit).toBeVisible();
+    await hit.click();
+    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/requirements/);
+  });
+
+  test("result types are gated by role", async ({ page }) => {
+    // Customer stakeholder may only ever get project results.
+    await login(page, "customer@brightlane.dev");
+    const denied = await page.request.get("/api/v1/search?q=Harbor%20Health");
+    const cust = await denied.json();
+    expect(cust.results.length).toBeGreaterThan(0);
+    expect(cust.results.every((r: { type: string }) => r.type === "project")).toBe(
+      true,
+    );
+
+    // The same query as a manager surfaces the customer entity too.
+    await page.request.post("/api/auth/logout");
+    await login(page, "manager@northwind.dev");
+    const res = await page.request.get("/api/v1/search?q=Harbor%20Health");
+    const mgr = await res.json();
+    expect(mgr.results.some((r: { type: string }) => r.type === "customer")).toBe(
+      true,
+    );
+  });
+});
+
 test.describe("API contract", () => {
   test("serves the OpenAPI document publicly", async ({ request }) => {
     const res = await request.get("/api/openapi.json");

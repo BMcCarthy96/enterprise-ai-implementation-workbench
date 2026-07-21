@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { can, ROLE_LABELS, type Permission } from "@/lib/auth/rbac";
 import { LogoutButton } from "@/components/LogoutButton";
+import { SearchPalette } from "@/components/SearchPalette";
 import { NavLinks } from "./NavLinks";
 
 export interface NavItem {
@@ -45,6 +46,9 @@ export default async function AppLayout({
             </p>
             <p className="truncate text-xs text-gray-500">{session.orgName}</p>
           </div>
+        </div>
+        <div className="px-2 pt-3">
+          <SearchPalette />
         </div>
         <nav aria-label="Main" className="flex-1 space-y-0.5 px-2 py-3">
           <NavLinks items={items} />
