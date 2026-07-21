@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { aiProvider } from "@/lib/ai/provider";
 import {
@@ -66,6 +66,26 @@ export async function runPlanGenerationJob(job: {
     );
   }
 
+  // Closed feedback loop: if a previous plan for this project was rejected,
+  // carry the reviewer's reason + note into this regeneration so the model
+  // can address it.
+  const lastRejection = await db.query.approvals.findFirst({
+    where: and(
+      eq(schema.approvals.projectId, project.id),
+      eq(schema.approvals.subjectType, "plan"),
+      eq(schema.approvals.status, "rejected"),
+    ),
+    orderBy: desc(schema.approvals.decidedAt),
+  });
+  const reviewerFeedback = lastRejection
+    ? [
+        lastRejection.reasonCode?.replace(/_/g, " "),
+        lastRejection.note,
+      ]
+        .filter(Boolean)
+        .join(" — ") || null
+    : null;
+
   const input: PlanPromptInput = {
     projectName: project.name,
     projectDescription: project.description,
@@ -77,6 +97,7 @@ export async function runPlanGenerationJob(job: {
       details: r.details,
       priority: r.priority,
     })),
+    reviewerFeedback,
   };
 
   const provider = await aiProvider();
@@ -122,6 +143,7 @@ export async function runPlanGenerationJob(job: {
       model,
       promptVersion: PROMPT_VERSION,
       generatedByJobId: job.id,
+      incorporatedFeedback: reviewerFeedback,
     })
     .returning({ id: schema.plans.id });
 
@@ -144,6 +166,7 @@ export async function runPlanGenerationJob(job: {
       promptVersion: PROMPT_VERSION,
       milestoneCount: content.milestones.length,
       taskCount: content.milestones.reduce((n, m) => n + m.tasks.length, 0),
+      incorporatedFeedback: reviewerFeedback ?? undefined,
     },
   });
   log.info({ planId: plan.id, version }, "plan generated and pending approval");

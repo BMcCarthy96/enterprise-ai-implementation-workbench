@@ -50,6 +50,7 @@ flowchart LR
 
 - **DB row = source of truth for jobs; SQS message = delivery only.** Messages carry just a `jobId`. Duplicate delivery (SQS is at-least-once) is harmless because the worker claims jobs with an atomic `queued → running` transition. All observability lives in Postgres, surfaced on the Ops page.
 - **AI output never acts on its own.** Plan generation stores a `pending_approval` plan and opens an approval. Only a human decision materializes milestones/tasks. Customer updates follow the same gate — nothing reaches the customer role without sign-off.
+- **Closed feedback loop.** When a plan is rejected, the reviewer's reason code + note are captured and fed into the *next* regeneration's prompt, and the resulting version records what feedback it addressed. A per-version diff (milestones added/removed, task/risk deltas) makes re-approval fast. This is the loop the Insights dashboard then measures.
 - **Model output is validated, not trusted.** Responses must parse as JSON and pass a zod schema (`PlanContentSchema`); one repair attempt feeds validation errors back to the model; a second failure fails the job into the retry/backoff path (5s → 10s → 20s… capped) and eventually a dead-letter state with a manual retry button.
 - **Prompt-injection hygiene.** User-authored text (requirement notes, etc.) is embedded as JSON inside an `<input_json>` envelope the model is told to treat as data; the envelope extraction is robust to close-tag smuggling (covered by a unit test that caught a real bug during development).
 - **The local/cloud switch is one env var.** All AWS SDK v3 clients read `AWS_ENDPOINT_URL`; set it to LocalStack for development, drop it in production and the SDK resolves real endpoints + IAM credentials. `AI_PROVIDER=mock|bedrock` swaps a deterministic offline provider for Claude on Bedrock.
@@ -138,8 +139,8 @@ Auth is a `workbench_session` httpOnly cookie (HS256 JWT, 12h). Async operations
 ## Testing & CI
 
 ```bash
-npm test          # 37 unit tests: RBAC matrix, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations
-npm run test:e2e  # Playwright: auth, RBAC visibility, seeded flows, insights, health, OpenAPI contract
+npm test          # 44 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff
+npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff, insights, health, CSV export, OpenAPI contract
 E2E_WORKER=1 npx playwright test  # + full async generate→approve→board flow (needs worker running)
 ```
 
@@ -165,6 +166,7 @@ The aggregation math lives in pure, unit-tested functions in [`src/server/servic
 - Uniform JSON error envelope (`{ error, requestId }`) with zod issue details on 400s
 - Seeded failure state (a throttled dead-letter job) so the ops story is visible in the demo
 - `GET /api/health` — public liveness/readiness probe reporting database and queue status independently (200 healthy / 503 degraded), ready for an App Runner / ECS health check
+- Audit trail exportable as CSV (`GET /api/v1/audit/export`, same RBAC as the audit page) for offline review / compliance
 
 ## Deploying to real AWS
 

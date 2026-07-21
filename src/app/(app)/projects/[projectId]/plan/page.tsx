@@ -3,6 +3,7 @@ import { db, schema } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { PlanContentSchema } from "@/lib/ai/planSchema";
+import { diffPlans } from "@/lib/ai/planDiff";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { JobRunnerButton } from "@/components/JobRunnerButton";
@@ -46,6 +47,14 @@ export default async function PlanPage({
   const parsed = PlanContentSchema.safeParse(latest.content);
   const content = parsed.success ? parsed.data : null;
 
+  // Diff against the immediately prior version (if any) so re-approval is fast.
+  const prev = plans[1];
+  const prevParsed = prev ? PlanContentSchema.safeParse(prev.content) : null;
+  const diff =
+    content && prevParsed?.success
+      ? diffPlans(prevParsed.data, content)
+      : null;
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -72,6 +81,47 @@ export default async function PlanPage({
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           This plan version was rejected. Adjust the requirements and
           regenerate, or review the rejection reason in the audit log.
+        </div>
+      )}
+
+      {latest.incorporatedFeedback && (
+        <div className="mb-4 rounded-md border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
+          <span className="font-medium">Revised from reviewer feedback:</span>{" "}
+          {latest.incorporatedFeedback}
+        </div>
+      )}
+
+      {diff && diff.hasChanges && (
+        <div className="mb-4 card p-4">
+          <h3 className="mb-2 text-sm font-semibold text-gray-900">
+            Changes from v{prev!.version}
+          </h3>
+          <ul className="space-y-1 text-sm text-gray-600">
+            {diff.milestonesAdded.map((m) => (
+              <li key={`a-${m}`} className="text-emerald-700">
+                + Milestone added: {m}
+              </li>
+            ))}
+            {diff.milestonesRemoved.map((m) => (
+              <li key={`r-${m}`} className="text-red-700">
+                − Milestone removed: {m}
+              </li>
+            ))}
+            {diff.taskCountDelta !== 0 && (
+              <li>
+                Tasks {diff.taskCountDelta > 0 ? "increased" : "decreased"} by{" "}
+                {Math.abs(diff.taskCountDelta)} ({diff.previousTaskCount} →{" "}
+                {diff.currentTaskCount})
+              </li>
+            )}
+            {diff.riskCountDelta !== 0 && (
+              <li>
+                Risks {diff.riskCountDelta > 0 ? "+" : ""}
+                {diff.riskCountDelta}
+              </li>
+            )}
+            {diff.summaryChanged && <li>Summary was revised</li>}
+          </ul>
         </div>
       )}
 

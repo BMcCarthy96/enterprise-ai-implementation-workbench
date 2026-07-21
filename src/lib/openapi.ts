@@ -298,6 +298,27 @@ export function buildOpenApiDocument() {
           responses: { "200": jsonResponse("Audit events"), ...STD },
         },
       },
+      "/api/v1/audit/export": {
+        get: {
+          tags: ["Audit"],
+          summary:
+            "Download the audit trail as CSV (requires audit.view); optional projectId filter",
+          parameters: [
+            {
+              name: "projectId",
+              in: "query",
+              schema: { type: "string", format: "uuid" },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "CSV export",
+              content: { "text/csv": { schema: { type: "string" } } },
+            },
+            ...STD,
+          },
+        },
+      },
       "/api/v1/jobs": {
         get: {
           tags: ["Operations"],

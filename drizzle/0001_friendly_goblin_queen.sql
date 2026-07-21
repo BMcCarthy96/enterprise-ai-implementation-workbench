@@ -1,0 +1,1 @@
+ALTER TABLE "plans" ADD COLUMN "incorporated_feedback" text;

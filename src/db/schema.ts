@@ -231,6 +231,10 @@ export const plans = pgTable(
     model: text("model"),
     promptVersion: text("prompt_version"),
     generatedByJobId: uuid("generated_by_job_id"),
+    // Reviewer feedback (reason code + note) from a prior rejection that this
+    // regeneration was asked to address — the human-in-the-loop signal fed
+    // back into the prompt.
+    incorporatedFeedback: text("incorporated_feedback"),
     createdBy: uuid("created_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

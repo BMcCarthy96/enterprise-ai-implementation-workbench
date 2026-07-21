@@ -67,6 +67,33 @@ describe("MockProvider", () => {
     expect(digest.body).toContain("blocked");
   });
 
+  it("addresses reviewer feedback when regenerating (closes the loop)", async () => {
+    const provider = new MockProvider();
+    const res = await provider.complete({
+      system: PLAN_SYSTEM_PROMPT,
+      user: buildPlanUserPrompt({
+        ...planInput,
+        reviewerFeedback: "wrong sequencing — build before discovery",
+      }),
+    });
+    const plan = PlanContentSchema.parse(JSON.parse(res.text));
+    // The revision must visibly acknowledge the feedback it was given.
+    expect(plan.summary.toLowerCase()).toContain("reviewer feedback");
+    expect(
+      plan.assumptions.some((a) => a.includes("wrong sequencing")),
+    ).toBe(true);
+  });
+
+  it("does not mention feedback on a first-pass generation", async () => {
+    const provider = new MockProvider();
+    const res = await provider.complete({
+      system: PLAN_SYSTEM_PROMPT,
+      user: buildPlanUserPrompt(planInput),
+    });
+    const plan = PlanContentSchema.parse(JSON.parse(res.text));
+    expect(plan.summary.toLowerCase()).not.toContain("revised in response");
+  });
+
   it("rejects prompts it does not recognize", async () => {
     const provider = new MockProvider();
     await expect(

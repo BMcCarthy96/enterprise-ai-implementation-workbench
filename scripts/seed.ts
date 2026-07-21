@@ -203,18 +203,61 @@ async function main() {
     })
     .returning();
 
-  const [plan] = await db
+  // v1 was generated, reviewed, and REJECTED — this populates the rejection
+  // reason codes in Insights and demonstrates the closed feedback loop. Its
+  // content differs from v2 (no dedicated launch milestone) so the version
+  // diff on the plan page is meaningful.
+  const rejectedContent = {
+    ...planContent,
+    summary:
+      "Initial implementation of Order Intake Automation for Brightlane Logistics covering 4 stated requirements, sequenced with the exception queue ahead of carrier assignment rules.",
+    milestones: planContent.milestones.slice(0, -1),
+  };
+  const [rejectedPlan] = await db
     .insert(schema.plans)
     .values({
       orgId: northwind.id,
       projectId: orderProject.id,
       version: 1,
+      status: "rejected",
+      summary: rejectedContent.summary,
+      content: rejectedContent,
+      model: "mock",
+      promptVersion: PROMPT_VERSION,
+      generatedByJobId: genJob.id,
+      createdAt: daysAgo(28),
+    })
+    .returning();
+
+  await db.insert(schema.approvals).values({
+    orgId: northwind.id,
+    projectId: orderProject.id,
+    subjectType: "plan",
+    subjectId: rejectedPlan.id,
+    status: "rejected",
+    requestedBy: engineer,
+    decidedBy: manager,
+    decidedAt: daysAgo(27, 6),
+    reasonCode: "wrong_sequencing",
+    note: "Carrier assignment rules must land before the exception queue — reverse the build order.",
+    createdAt: daysAgo(28),
+  });
+
+  // v2 is the revision that incorporated that feedback, then was approved.
+  const [plan] = await db
+    .insert(schema.plans)
+    .values({
+      orgId: northwind.id,
+      projectId: orderProject.id,
+      version: 2,
       status: "approved",
       summary: planContent.summary,
       content: planContent,
       model: "mock",
       promptVersion: PROMPT_VERSION,
       generatedByJobId: genJob.id,
+      incorporatedFeedback:
+        "wrong sequencing — Carrier assignment rules must land before the exception queue — reverse the build order.",
       createdAt: daysAgo(27),
     })
     .returning();
@@ -228,7 +271,7 @@ async function main() {
     requestedBy: engineer,
     decidedBy: manager,
     decidedAt: daysAgo(26),
-    note: "Plan covers all four intake requirements. Sequencing looks right — carrier rules before exception queue.",
+    note: "Revised plan fixes the sequencing — carrier rules now precede the exception queue. Approved.",
     createdAt: daysAgo(27),
   });
 
@@ -361,9 +404,11 @@ async function main() {
     { action: "project.created", subjectType: "project", actorId: admin, projectId: orderProject.id, days: 30, metadata: { name: orderProject.name } },
     { action: "requirement.created", subjectType: "requirement", actorId: engineer, projectId: orderProject.id, days: 28, metadata: { title: orderReqs[0].title } },
     { action: "requirement.created", subjectType: "requirement", actorId: engineer, projectId: orderProject.id, days: 28, metadata: { title: orderReqs[1].title } },
+    { action: "plan.generated", subjectType: "plan", actorId: null, projectId: orderProject.id, days: 28, metadata: { version: 1, model: "mock", promptVersion: PROMPT_VERSION } },
+    { action: "approval.rejected", subjectType: "plan", actorId: manager, projectId: orderProject.id, days: 27, metadata: { reasonCode: "wrong_sequencing", note: "reverse the build order" } },
     { action: "job.enqueued", subjectType: "job", actorId: engineer, projectId: orderProject.id, days: 27, metadata: { type: "plan_generation" } },
-    { action: "plan.generated", subjectType: "plan", actorId: null, projectId: orderProject.id, days: 27, metadata: { version: 1, model: "mock", promptVersion: PROMPT_VERSION } },
-    { action: "approval.approved", subjectType: "plan", actorId: manager, projectId: orderProject.id, days: 26, metadata: { note: "Sequencing looks right" } },
+    { action: "plan.generated", subjectType: "plan", actorId: null, projectId: orderProject.id, days: 27, metadata: { version: 2, model: "mock", promptVersion: PROMPT_VERSION, incorporatedFeedback: "wrong sequencing" } },
+    { action: "approval.approved", subjectType: "plan", actorId: manager, projectId: orderProject.id, days: 26, metadata: { note: "Revised plan fixes the sequencing" } },
     { action: "task.status_changed", subjectType: "task", actorId: engineer, projectId: orderProject.id, days: 12, metadata: { from: "in_progress", to: "done" } },
     { action: "task.status_changed", subjectType: "task", actorId: engineer, projectId: orderProject.id, days: 4, metadata: { from: "in_progress", to: "blocked" } },
     { action: "customer_update.generated", subjectType: "customer_update", actorId: null, projectId: orderProject.id, days: 7, metadata: { model: "mock" } },

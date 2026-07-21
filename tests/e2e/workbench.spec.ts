@@ -74,9 +74,21 @@ test.describe("seeded delivery data", () => {
     await page.goto("/projects");
     await page.getByRole("link", { name: "Order Intake Automation" }).click();
     await page.getByRole("link", { name: "Plan" }).click();
-    await expect(page.getByText("Plan v1")).toBeVisible();
+    await expect(page.getByText("Plan v2")).toBeVisible();
     await expect(page.getByText("Milestones & tasks")).toBeVisible();
     await expect(page.getByText("Discovery & Kickoff")).toBeVisible();
+  });
+
+  test("revised plan shows the incorporated feedback and a version diff", async ({ page }) => {
+    await login(page, "manager@northwind.dev");
+    await page.goto("/projects");
+    await page.getByRole("link", { name: "Order Intake Automation" }).click();
+    await page.getByRole("link", { name: "Plan" }).click();
+    // The closed-loop banner and the "what changed" panel.
+    await expect(page.getByText("Revised from reviewer feedback:")).toBeVisible();
+    await expect(page.getByText("Changes from v1")).toBeVisible();
+    // v2 restored the launch milestone that v1 lacked.
+    await expect(page.getByText(/Milestone added: Launch & Handoff/)).toBeVisible();
   });
 
   test("customer sees published updates but not internal tabs", async ({ page }) => {
@@ -113,6 +125,8 @@ test.describe("seeded delivery data", () => {
     await expect(page.getByText("Plan approval rate")).toBeVisible();
     await expect(page.getByText("Quality by prompt version")).toBeVisible();
     await expect(page.getByText("plan-v1.0")).toBeVisible();
+    // The seeded rejection surfaces in the reason-code breakdown.
+    await expect(page.getByText("wrong sequencing")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Delivery health" }),
     ).toBeVisible();
@@ -137,6 +151,23 @@ test.describe("API contract", () => {
     expect(body.status).toBe("healthy");
     expect(body.checks.database.ok).toBe(true);
     expect(body.checks.queue.ok).toBe(true);
+  });
+
+  test("audit CSV export is gated and returns CSV for authorized users", async ({ page }) => {
+    // Customer stakeholder is denied.
+    await login(page, "customer@brightlane.dev");
+    const denied = await page.request.get("/api/v1/audit/export");
+    expect(denied.status()).toBe(403);
+
+    // Manager gets a CSV attachment with a header row.
+    await page.request.post("/api/auth/logout");
+    await login(page, "manager@northwind.dev");
+    const res = await page.request.get("/api/v1/audit/export");
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toContain("text/csv");
+    expect(res.headers()["content-disposition"]).toContain("attachment");
+    const csv = await res.text();
+    expect(csv.split("\n")[0]).toContain("timestamp,actor,action");
   });
 });
 

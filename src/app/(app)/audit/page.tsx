@@ -47,6 +47,14 @@ export default async function AuditPage({
       <PageHeader
         title="Audit Log"
         subtitle="Append-only history of every action in your organization — human and system"
+        actions={
+          <a
+            className="btn-secondary"
+            href={`/api/v1/audit/export${project ? `?projectId=${project}` : ""}`}
+          >
+            Download CSV
+          </a>
+        }
       />
 
       <form method="GET" className="mb-4 flex items-center gap-2">

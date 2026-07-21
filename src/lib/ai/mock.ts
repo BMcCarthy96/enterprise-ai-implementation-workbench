@@ -49,9 +49,18 @@ export class MockProvider implements AiProvider {
       estimateHours: r.priority === "critical" ? 24 : r.priority === "high" ? 16 : 8,
     }));
 
+    // When this is a revision, lead the summary by naming the change made in
+    // response to the reviewer — makes the closed feedback loop visible.
+    const revisionPrefix = input.reviewerFeedback
+      ? `Revised in response to reviewer feedback ("${input.reviewerFeedback}"): scope and sequencing were adjusted accordingly. `
+      : "";
+
     return {
-      summary: `Phased implementation of ${input.projectName} for ${input.customerName}, covering ${reqs.length} stated requirement${reqs.length === 1 ? "" : "s"}. The plan moves from discovery and environment setup through iterative build and validation to a controlled launch with handoff documentation.${critical.length ? ` ${critical.length} high-priority requirement${critical.length === 1 ? "" : "s"} are front-loaded into the early build phase.` : ""}`,
+      summary: `${revisionPrefix}Phased implementation of ${input.projectName} for ${input.customerName}, covering ${reqs.length} stated requirement${reqs.length === 1 ? "" : "s"}. The plan moves from discovery and environment setup through iterative build and validation to a controlled launch with handoff documentation.${critical.length ? ` ${critical.length} high-priority requirement${critical.length === 1 ? "" : "s"} are front-loaded into the early build phase.` : ""}`,
       assumptions: [
+        ...(input.reviewerFeedback
+          ? [`This revision addresses prior review feedback: ${input.reviewerFeedback}.`]
+          : []),
         `${input.customerName} can provide a technical point of contact within the first week.`,
         "Access to required source systems is granted before the build phase begins.",
         "Scope is limited to the requirements captured at intake; new requests go through change control.",
