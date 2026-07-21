@@ -52,6 +52,17 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      localstack:
+        image: localstack/localstack:4.6
+        env:
+          SERVICES: s3,sqs
+        ports:
+          - 4566:4566
+        options: >-
+          --health-cmd "curl -sf http://localhost:4566/_localstack/health || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -60,6 +71,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Provision AWS resources (LocalStack)
+        env:
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+          ENDPOINT: http://localhost:4566
+        run: |
+          aws --endpoint-url=$ENDPOINT s3 mb s3://workbench-documents
+          aws --endpoint-url=$ENDPOINT sqs create-queue --queue-name workbench-jobs-dlq
+          aws --endpoint-url=$ENDPOINT sqs create-queue --queue-name workbench-jobs
       - name: Migrate and seed
         run: |
           npm run db:migrate
