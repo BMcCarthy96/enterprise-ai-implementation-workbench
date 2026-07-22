@@ -131,6 +131,28 @@ test.describe("seeded delivery data", () => {
       page.getByRole("heading", { name: "Delivery health" }),
     ).toBeVisible();
   });
+
+  test("rejecting a plan with auto-regenerate queues a revised version", async ({ page }) => {
+    await login(page, "manager@northwind.dev");
+    await page
+      .getByRole("navigation", { name: "Main" })
+      .getByRole("link", { name: "Approvals" })
+      .click();
+    // The seeded planning project has a plan awaiting review.
+    const card = page.locator("div.card", { hasText: "Claims Status Tracker" });
+    await expect(card).toBeVisible();
+    await card.getByRole("button", { name: /^Reject/ }).click();
+    // The auto-regenerate option is on by default for plan rejections.
+    await expect(card.getByRole("checkbox")).toBeChecked();
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes("/decision") && r.request().method() === "POST",
+      ),
+      card.getByRole("button", { name: "Confirm rejection" }).click(),
+    ]);
+    // The confirmation only renders when the API returned a regeneration job id.
+    await expect(card.getByText(/generating a revised plan/i)).toBeVisible();
+  });
 });
 
 test.describe("global search palette", () => {

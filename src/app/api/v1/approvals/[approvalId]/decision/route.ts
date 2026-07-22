@@ -9,14 +9,18 @@ export const POST = withAuth<Params>(
   "approvals.decide",
   async (req, { session }, params) => {
     const body = await parseBody(req, ApprovalDecisionSchema);
-    await decideApproval({
+    const result = await decideApproval({
       approvalId: params.approvalId,
       orgId: session.orgId,
       decidedBy: session.userId,
       decision: body.decision,
       reasonCode: body.reasonCode,
       note: body.note,
+      regenerate: body.regenerate,
     });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      regenerationJobId: result.regenerationJobId,
+    });
   },
 );

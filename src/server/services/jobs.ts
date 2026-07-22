@@ -23,6 +23,9 @@ export async function createAndEnqueueJob(input: {
   type: JobType;
   payload?: Record<string, unknown>;
   requestedBy?: string;
+  /** Extra fields merged into the job.enqueued audit metadata (e.g. what
+   *  triggered the job). */
+  auditMetadata?: Record<string, unknown>;
 }): Promise<string> {
   const [job] = await db
     .insert(schema.jobs)
@@ -43,7 +46,7 @@ export async function createAndEnqueueJob(input: {
     subjectType: "job",
     subjectId: job.id,
     projectId: input.projectId,
-    metadata: { type: input.type },
+    metadata: { type: input.type, ...input.auditMetadata },
   });
   return job.id;
 }

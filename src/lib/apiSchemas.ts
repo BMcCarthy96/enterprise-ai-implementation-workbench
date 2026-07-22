@@ -55,6 +55,9 @@ export const ApprovalDecisionSchema = z.object({
     ])
     .optional(),
   note: z.string().max(2000).optional(),
+  // When rejecting a plan, queue a revised generation that carries this
+  // rejection's reason + note back into the prompt (closed feedback loop).
+  regenerate: z.boolean().optional(),
 });
 
 export const CreateTaskSchema = z.object({

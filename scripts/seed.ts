@@ -392,6 +392,101 @@ async function main() {
     createdAt: daysAgo(2),
   });
 
+  console.log("Creating a planning project with a plan awaiting review...");
+  // A second Harbor engagement sitting in the approval queue — gives the demo a
+  // real pending decision and exercises the reject → auto-regenerate loop.
+  const [claimsProject] = await db
+    .insert(schema.projects)
+    .values({
+      orgId: northwind.id,
+      customerId: harbor.id,
+      name: "Claims Status Tracker",
+      description:
+        "Give Harbor Health's billing team a real-time view of insurance claim status with automated payer status checks and denial-reason routing.",
+      status: "planning",
+      targetDate: daysAgo(-60),
+      createdBy: manager,
+      createdAt: daysAgo(3),
+    })
+    .returning();
+
+  const claimsReqs = [
+    { title: "Automated payer claim status polling", details: "Poll the clearinghouse for claim status changes and surface updates without staff logging into each payer portal.", priority: "high" as const },
+    { title: "Denial-reason routing to billing specialists", details: "Route denied claims to the correct specialist queue based on the denial reason code.", priority: "high" as const },
+    { title: "Aging report for outstanding claims", details: "Weekly report of claims outstanding past 30/60/90 days for the billing lead.", priority: "medium" as const },
+  ];
+  for (const [i, r] of claimsReqs.entries()) {
+    await db.insert(schema.requirements).values({
+      orgId: northwind.id,
+      projectId: claimsProject.id,
+      title: r.title,
+      details: r.details,
+      priority: r.priority,
+      status: "new",
+      createdBy: manager,
+      createdAt: daysAgo(3, i),
+    });
+  }
+
+  const claimsPlanRes = await mock.complete({
+    system: PLAN_SYSTEM_PROMPT,
+    user: buildPlanUserPrompt({
+      projectName: claimsProject.name,
+      projectDescription: claimsProject.description,
+      customerName: harbor.name,
+      customerIndustry: harbor.industry,
+      targetDate: claimsProject.targetDate?.toISOString().slice(0, 10) ?? null,
+      requirements: claimsReqs.map((r) => ({
+        title: r.title,
+        details: r.details,
+        priority: r.priority,
+      })),
+    }),
+  });
+  const claimsPlanContent = PlanContentSchema.parse(JSON.parse(claimsPlanRes.text));
+
+  const [claimsJob] = await db
+    .insert(schema.jobs)
+    .values({
+      orgId: northwind.id,
+      projectId: claimsProject.id,
+      type: "plan_generation",
+      status: "succeeded",
+      attempts: 1,
+      requestedBy: manager,
+      startedAt: daysAgo(2),
+      finishedAt: daysAgo(2, 0.01),
+      durationMs: 2100,
+      createdAt: daysAgo(2),
+    })
+    .returning();
+
+  const [claimsPlan] = await db
+    .insert(schema.plans)
+    .values({
+      orgId: northwind.id,
+      projectId: claimsProject.id,
+      version: 1,
+      status: "pending_approval",
+      summary: claimsPlanContent.summary,
+      content: claimsPlanContent,
+      model: "mock",
+      promptVersion: PROMPT_VERSION,
+      generatedByJobId: claimsJob.id,
+      createdAt: daysAgo(2),
+    })
+    .returning();
+
+  await db.insert(schema.approvals).values({
+    orgId: northwind.id,
+    projectId: claimsProject.id,
+    subjectType: "plan",
+    subjectId: claimsPlan.id,
+    status: "pending",
+    requestedBy: manager,
+    createdAt: daysAgo(2),
+  });
+
   console.log("Writing audit history...");
   const auditRows: Array<{
     action: string;
@@ -415,6 +510,8 @@ async function main() {
     { action: "approval.approved", subjectType: "customer_update", actorId: manager, projectId: orderProject.id, days: 6 },
     { action: "project.created", subjectType: "project", actorId: manager, projectId: onboardingProject.id, days: 5, metadata: { name: onboardingProject.name } },
     { action: "requirement.created", subjectType: "requirement", actorId: manager, projectId: onboardingProject.id, days: 4, metadata: { title: onboardingReqs[0].title } },
+    { action: "project.created", subjectType: "project", actorId: manager, projectId: claimsProject.id, days: 3, metadata: { name: claimsProject.name } },
+    { action: "plan.generated", subjectType: "plan", actorId: null, projectId: claimsProject.id, days: 2, metadata: { version: 1, model: "mock", promptVersion: PROMPT_VERSION } },
     { action: "job.dead_letter", subjectType: "job", actorId: null, projectId: onboardingProject.id, days: 2, metadata: { type: "customer_update_digest", attempts: 3 } },
   ];
   for (const a of auditRows) {

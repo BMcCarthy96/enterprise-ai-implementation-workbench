@@ -143,7 +143,10 @@ export default async function ApprovalsPage() {
                 )}
 
                 {canDecide ? (
-                  <ApprovalActions approvalId={approval.id} />
+                  <ApprovalActions
+                    approvalId={approval.id}
+                    subjectType={approval.subjectType}
+                  />
                 ) : (
                   <p className="text-xs text-gray-400">
                     Awaiting a decision from an implementation manager.

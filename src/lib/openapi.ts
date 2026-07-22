@@ -231,7 +231,7 @@ export function buildOpenApiDocument() {
         post: {
           tags: ["Approvals"],
           summary:
-            "Approve or reject (requires approvals.decide). Approving a plan materializes milestones and tasks; approving an update publishes it.",
+            "Approve or reject (requires approvals.decide). Approving a plan materializes milestones and tasks; approving an update publishes it. Rejecting a plan with regenerate=true queues a revised version that carries the reason + note back into the prompt.",
           parameters: [pathParam("approvalId")],
           requestBody: body(ApprovalDecisionSchema),
           responses: {

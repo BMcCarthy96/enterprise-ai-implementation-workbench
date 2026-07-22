@@ -2,6 +2,8 @@ import { and, eq, ne } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { PlanContentSchema } from "@/lib/ai/planSchema";
 import { ApiError } from "@/lib/api";
+import { logger } from "@/lib/logger";
+import { createAndEnqueueJob } from "./jobs";
 import { recordAudit } from "./audit";
 
 export interface DecisionInput {
@@ -11,6 +13,30 @@ export interface DecisionInput {
   decision: "approved" | "rejected";
   reasonCode?: string;
   note?: string;
+  /** When rejecting a plan, also queue a revised generation (feedback loop). */
+  regenerate?: boolean;
+}
+
+export interface DecisionResult {
+  /** Set when a rejection kicked off an automatic revised-plan generation. */
+  regenerationJobId?: string;
+}
+
+/**
+ * Whether a decision should trigger an automatic revised-plan generation. Pure
+ * so the guard is unit-tested directly: only a *plan* *rejection* with the flag
+ * set qualifies — approvals and customer-update rejections never regenerate.
+ */
+export function wantsRegeneration(opts: {
+  decision: "approved" | "rejected";
+  subjectType: string;
+  regenerate?: boolean;
+}): boolean {
+  return (
+    opts.decision === "rejected" &&
+    opts.subjectType === "plan" &&
+    opts.regenerate === true
+  );
 }
 
 /**
@@ -19,7 +45,9 @@ export interface DecisionInput {
  * customer stakeholder view. Rejections capture a reason code that feeds the
  * quality loop.
  */
-export async function decideApproval(input: DecisionInput): Promise<void> {
+export async function decideApproval(
+  input: DecisionInput,
+): Promise<DecisionResult> {
   const approval = await db.query.approvals.findFirst({
     where: and(
       eq(schema.approvals.id, input.approvalId),
@@ -64,6 +92,70 @@ export async function decideApproval(input: DecisionInput): Promise<void> {
       note: input.note ?? null,
     },
   });
+
+  // Closed feedback loop: on a plan rejection the reviewer can opt to have a
+  // revised plan generated immediately. The worker's generation path already
+  // pulls the latest rejection's reason + note into the prompt.
+  let regenerationJobId: string | undefined;
+  if (
+    wantsRegeneration({
+      decision: input.decision,
+      subjectType: approval.subjectType,
+      regenerate: input.regenerate,
+    })
+  ) {
+    regenerationJobId = await queueRegeneration(approval, input.decidedBy);
+  }
+
+  return { regenerationJobId };
+}
+
+/**
+ * Enqueue a revised-plan generation after a rejection. Best-effort: the human
+ * rejection is already committed and must not be undone by a queue hiccup, so
+ * failures here are logged and swallowed (the reviewer can regenerate manually).
+ */
+async function queueRegeneration(
+  approval: typeof schema.approvals.$inferSelect,
+  decidedBy: string,
+): Promise<string | undefined> {
+  if (!approval.projectId) return undefined;
+  const projectId = approval.projectId;
+  try {
+    // Don't stack a second generation if one is already queued.
+    const queued = await db.query.jobs.findFirst({
+      where: and(
+        eq(schema.jobs.projectId, projectId),
+        eq(schema.jobs.type, "plan_generation"),
+        eq(schema.jobs.status, "queued"),
+      ),
+    });
+    if (queued) return queued.id;
+
+    // Generation needs at least one requirement to work from.
+    const reqCount = await db.$count(
+      schema.requirements,
+      eq(schema.requirements.projectId, projectId),
+    );
+    if (reqCount === 0) return undefined;
+
+    return await createAndEnqueueJob({
+      orgId: approval.orgId,
+      projectId,
+      type: "plan_generation",
+      requestedBy: decidedBy,
+      auditMetadata: {
+        trigger: "rejection_auto_regenerate",
+        rejectedApprovalId: approval.id,
+      },
+    });
+  } catch (err) {
+    logger.error(
+      { err: String(err), projectId },
+      "auto-regeneration enqueue failed after plan rejection",
+    );
+    return undefined;
+  }
 }
 
 async function applyPlanDecision(planId: string, input: DecisionInput) {
