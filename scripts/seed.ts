@@ -321,7 +321,9 @@ async function main() {
               : engineer,
         sortOrder: j,
         createdAt: daysAgo(26),
-        updatedAt: daysAgo(status === "done" ? 10 : 2),
+        // The blocked task has been stuck long enough to breach the SLA policy
+        // (blockedTaskBreachDays), so the dashboard delivery-risk panel lights up.
+        updatedAt: daysAgo(status === "done" ? 10 : status === "blocked" ? 8 : 2),
       });
     }
   }
@@ -404,7 +406,9 @@ async function main() {
       description:
         "Give Harbor Health's billing team a real-time view of insurance claim status with automated payer status checks and denial-reason routing.",
       status: "planning",
-      targetDate: daysAgo(-60),
+      // Target only ~10 days out while the plan is still awaiting approval —
+      // trips both the approaching-target-date and stale-approval SLAs.
+      targetDate: daysAgo(-10),
       createdBy: manager,
       createdAt: daysAgo(3),
     })
@@ -505,7 +509,7 @@ async function main() {
     { action: "plan.generated", subjectType: "plan", actorId: null, projectId: orderProject.id, days: 27, metadata: { version: 2, model: "mock", promptVersion: PROMPT_VERSION, incorporatedFeedback: "wrong sequencing" } },
     { action: "approval.approved", subjectType: "plan", actorId: manager, projectId: orderProject.id, days: 26, metadata: { note: "Revised plan fixes the sequencing" } },
     { action: "task.status_changed", subjectType: "task", actorId: engineer, projectId: orderProject.id, days: 12, metadata: { from: "in_progress", to: "done" } },
-    { action: "task.status_changed", subjectType: "task", actorId: engineer, projectId: orderProject.id, days: 4, metadata: { from: "in_progress", to: "blocked" } },
+    { action: "task.status_changed", subjectType: "task", actorId: engineer, projectId: orderProject.id, days: 8, metadata: { from: "in_progress", to: "blocked" } },
     { action: "customer_update.generated", subjectType: "customer_update", actorId: null, projectId: orderProject.id, days: 7, metadata: { model: "mock" } },
     { action: "approval.approved", subjectType: "customer_update", actorId: manager, projectId: orderProject.id, days: 6 },
     { action: "project.created", subjectType: "project", actorId: manager, projectId: onboardingProject.id, days: 5, metadata: { name: onboardingProject.name } },

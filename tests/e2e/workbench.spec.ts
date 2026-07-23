@@ -132,6 +132,19 @@ test.describe("seeded delivery data", () => {
     ).toBeVisible();
   });
 
+  test("dashboard surfaces SLA delivery-risk flags", async ({ page }) => {
+    await login(page, "manager@northwind.dev"); // lands on /dashboard
+    const panel = page.locator("div.card", { hasText: "Delivery risk" });
+    await expect(
+      panel.getByRole("heading", { name: "Delivery risk" }),
+    ).toBeVisible();
+    // Order Intake has a task blocked past the breach threshold — stable across
+    // the suite since no other test unblocks it.
+    const orderRow = panel.locator("li", { hasText: "Order Intake Automation" });
+    await expect(orderRow.getByText("Breached")).toBeVisible();
+    await expect(orderRow.getByText(/task blocked/i)).toBeVisible();
+  });
+
   test("rejecting a plan with auto-regenerate queues a revised version", async ({ page }) => {
     await login(page, "manager@northwind.dev");
     await page

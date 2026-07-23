@@ -143,8 +143,8 @@ Auth is a `workbench_session` httpOnly cookie (HS256 JWT, 12h). Async operations
 ## Testing & CI
 
 ```bash
-npm test          # 53 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff, search gating, regeneration guard
-npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff + auto-regenerate, insights, global search, health, CSV export, OpenAPI contract
+npm test          # 63 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff, search gating, regeneration guard, SLA risk scoring
+npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff + auto-regenerate, SLA risk, insights, global search, health, CSV export, OpenAPI contract
 E2E_WORKER=1 npx playwright test  # + full async generate→approve→board flow (needs worker running)
 ```
 
@@ -160,6 +160,16 @@ An **Insights** dashboard (`/insights`, admin + manager only) turns the audit an
 - **Delivery health:** projects by stage, tasks by status, requirements/plans/updates volume
 
 The aggregation math lives in pure, unit-tested functions in [`src/server/services/insights.ts`](src/server/services/insights.ts) — verifiable without a database.
+
+## SLA & delivery risk
+
+The dashboard runs a **policy-driven SLA evaluator** over live delivery data and flags every actively-delivering project that is **at risk** or **breached**, worst first, with the specific signal that tripped:
+
+- **Target date** overdue, or approaching within the policy window
+- **Blocked tasks** aging past a warn → breach threshold
+- **Approvals** aging in the human-review queue (the AI-in-the-loop bottleneck)
+
+Risk is **derived on read**, not stored — no extra tables, no drift. Thresholds are one `DEFAULT_SLA_POLICY` object and the scoring is pure, unit-tested [`src/server/services/sla.ts`](src/server/services/sla.ts); the same levels drive an inline risk dot on each project row.
 
 ## Reliability & operability
 

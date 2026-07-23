@@ -5,6 +5,9 @@ import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
+import { DeliveryRiskPanel } from "@/components/DeliveryRiskPanel";
+import { RiskDot } from "@/components/RiskBadge";
+import { getDeliveryRisks, type RiskLevel } from "@/server/services/sla";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +55,13 @@ export default async function DashboardPage() {
     ),
   );
 
+  const delivery = isInternal
+    ? await getDeliveryRisks(orgId)
+    : { risks: [], counts: { breached: 0, atRisk: 0 } };
+  const riskByProject = new Map<string, RiskLevel>(
+    delivery.risks.map((r) => [r.projectId, r.level]),
+  );
+
   const recentActivity = isInternal
     ? await db
         .select({
@@ -94,6 +104,8 @@ export default async function DashboardPage() {
         ))}
       </div>
 
+      {isInternal && <DeliveryRiskPanel {...delivery} />}
+
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="card lg:col-span-2">
           <div className="border-b border-gray-100 px-4 py-3">
@@ -107,7 +119,8 @@ export default async function DashboardPage() {
                   className="flex items-center justify-between px-4 py-3 hover:bg-gray-50"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-gray-900">
+                    <p className="flex items-center gap-2 truncate text-sm font-medium text-gray-900">
+                      <RiskDot level={riskByProject.get(project.id) ?? "on_track"} />
                       {project.name}
                     </p>
                     <p className="truncate text-xs text-gray-500">{customerName}</p>
