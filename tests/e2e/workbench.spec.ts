@@ -51,10 +51,10 @@ test.describe("authentication & RBAC", () => {
 test.describe("seeded delivery data", () => {
   test("project board shows tasks across workflow columns", async ({ page }) => {
     await login(page, "engineer@northwind.dev");
-    await page
-      .getByRole("navigation", { name: "Main" })
-      .getByRole("link", { name: "Projects" })
-      .click();
+    // Go straight to /projects: the dashboard now lists project names in both
+    // the delivery-risk panel and the projects card, so a nav-click-then-locate
+    // races the client-side transition.
+    await page.goto("/projects");
     await page.getByRole("link", { name: "Order Intake Automation" }).click();
     const tabs = page.getByRole("navigation", { name: "Project sections" });
     await tabs.getByRole("link", { name: "Board" }).click();
@@ -147,10 +147,7 @@ test.describe("seeded delivery data", () => {
 
   test("rejecting a plan with auto-regenerate queues a revised version", async ({ page }) => {
     await login(page, "manager@northwind.dev");
-    await page
-      .getByRole("navigation", { name: "Main" })
-      .getByRole("link", { name: "Approvals" })
-      .click();
+    await page.goto("/approvals");
     // The seeded planning project has a plan awaiting review.
     const card = page.locator("div.card", { hasText: "Claims Status Tracker" });
     await expect(card).toBeVisible();
