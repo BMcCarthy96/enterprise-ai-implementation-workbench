@@ -105,6 +105,37 @@ test.describe("seeded delivery data", () => {
     ).toBeVisible();
   });
 
+  // Runs before the bulk-approval test on purpose: that test publishes the
+  // drafts this one asserts are hidden.
+  test("customer timeline shows progress without leaking internal review state", async ({
+    page,
+  }) => {
+    await login(page, "customer@brightlane.dev");
+    await page.goto("/projects");
+    await page.getByRole("link", { name: "Order Intake Automation" }).click();
+    await page
+      .getByRole("navigation", { name: "Project sections" })
+      .getByRole("link", { name: "Timeline" })
+      .click();
+
+    // Delivery phases with their status, and overall progress.
+    await expect(page.getByRole("heading", { name: "Delivery phases" })).toBeVisible();
+    await expect(page.getByText("Discovery & Kickoff")).toBeVisible();
+    await expect(page.getByText(/of 5 phases complete/)).toBeVisible();
+
+    // The published update is here...
+    await expect(
+      page.getByText("Order Intake Automation — Progress Update"),
+    ).toBeVisible();
+    // ...but the update still awaiting internal approval is not.
+    await expect(
+      page.getByText("Order Intake Automation — Milestone Update"),
+    ).toHaveCount(0);
+    // And no internal review history leaks in (the seeded v1 rejection).
+    await expect(page.getByText(/wrong sequencing/i)).toHaveCount(0);
+    await expect(page.getByText(/rejected/i)).toHaveCount(0);
+  });
+
   test("ops page shows job history including the dead-letter job", async ({ page }) => {
     await login(page, "admin@northwind.dev");
     await page.getByRole("link", { name: "Operations" }).click();

@@ -144,8 +144,8 @@ Auth is a `workbench_session` httpOnly cookie (HS256 JWT, 12h). Async operations
 ## Testing & CI
 
 ```bash
-npm test          # 70 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff, search gating, regeneration guard, SLA risk scoring, bulk-decision summaries
-npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff + auto-regenerate, bulk approvals, SLA risk, insights, global search, health, CSV export, OpenAPI contract
+npm test          # 79 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff, search gating, regeneration guard, SLA risk scoring, bulk-decision summaries, customer-timeline assembly
+npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff + auto-regenerate, bulk approvals, customer timeline leak check, SLA risk, insights, global search, health, CSV export, OpenAPI contract
 E2E_WORKER=1 npx playwright test  # + full async generate→approve→board flow (needs worker running)
 ```
 
@@ -161,6 +161,14 @@ An **Insights** dashboard (`/insights`, admin + manager only) turns the audit an
 - **Delivery health:** projects by stage, tasks by status, requirements/plans/updates volume
 
 The aggregation math lives in pure, unit-tested functions in [`src/server/services/insights.ts`](src/server/services/insights.ts) — verifiable without a database.
+
+## Customer-facing status timeline
+
+Each project has a **Timeline** tab — the external stakeholder's view of delivery: overall progress, the plan's phases as an ordered spine with per-phase task completion, and the published update history.
+
+The interesting part is what it's built *from*. The obvious implementation — render the project's audit trail — would leak exactly the things a customer must never see: plan rejections and their reason codes, AI generation attempts and retries, job failures, who approved what. So the timeline is assembled from an **explicit allowlist of customer-safe sources** (milestones, tasks, and `published` customer updates) rather than by filtering a stream that defaults to exposing everything.
+
+That guarantee is pinned by tests, not just intent: [`buildProjectTimeline`](src/server/services/timeline.ts) re-filters updates to `published` itself rather than trusting the caller's query, with unit tests asserting draft/pending/rejected updates never surface, plus an e2e test that signs in *as the customer* and asserts the in-review draft and the seeded rejection reason are absent from the page.
 
 ## SLA & delivery risk
 

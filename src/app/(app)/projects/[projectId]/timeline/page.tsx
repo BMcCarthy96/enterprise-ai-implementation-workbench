@@ -1,0 +1,41 @@
+import { and, eq } from "drizzle-orm";
+import { notFound } from "next/navigation";
+import { db, schema } from "@/db";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
+import { ProjectTimeline } from "@/components/ProjectTimeline";
+import { getProjectTimeline } from "@/server/services/timeline";
+
+export const dynamic = "force-dynamic";
+
+export default async function TimelinePage({
+  params,
+}: {
+  params: Promise<{ projectId: string }>;
+}) {
+  const { projectId } = await params;
+  const session = (await getSession())!;
+
+  // Org-scoped: a guessed id from another tenant 404s rather than leaking.
+  const project = await db.query.projects.findFirst({
+    where: and(
+      eq(schema.projects.id, projectId),
+      eq(schema.projects.orgId, session.orgId),
+    ),
+  });
+  if (!project) notFound();
+
+  const timeline = await getProjectTimeline(projectId, project);
+  const internal = can(session.role, "internal.view");
+
+  return (
+    <div>
+      <p className="mb-4 text-sm text-gray-500">
+        {internal
+          ? "The customer-facing view of delivery progress — published updates only, no internal review history."
+          : "Where your implementation stands and what has been published so far."}
+      </p>
+      <ProjectTimeline timeline={timeline} />
+    </div>
+  );
+}
