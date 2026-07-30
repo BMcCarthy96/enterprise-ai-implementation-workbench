@@ -110,6 +110,76 @@ export async function decideApproval(
   return { regenerationJobId };
 }
 
+export interface BulkDecisionInput extends Omit<DecisionInput, "approvalId"> {
+  approvalIds: string[];
+}
+
+export interface BulkDecisionResult {
+  succeeded: Array<{ approvalId: string; regenerationJobId?: string }>;
+  failed: Array<{ approvalId: string; status: number; message: string }>;
+  regenerationJobCount: number;
+}
+
+/**
+ * Human-readable outcome for a bulk decision. Pure so the wording is pinned by
+ * unit tests rather than asserted through the UI.
+ */
+export function summarizeBulkDecision(
+  result: BulkDecisionResult,
+  decision: "approved" | "rejected",
+): string {
+  const verb = decision === "approved" ? "Approved" : "Rejected";
+  const parts = [`${verb} ${result.succeeded.length}`];
+  if (result.failed.length > 0) parts.push(`${result.failed.length} failed`);
+  if (result.regenerationJobCount > 0) {
+    parts.push(
+      `${result.regenerationJobCount} revised ${
+        result.regenerationJobCount === 1 ? "plan" : "plans"
+      } queued`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * Apply one decision across a selection from the approval queue.
+ *
+ * Deliberately sequential and partial-failure tolerant: each item is an
+ * independent audited transaction, so a stale selection (someone else already
+ * decided one, or an id from another tenant) records a per-item failure instead
+ * of rolling back the reviewer's other decisions.
+ */
+export async function decideApprovalsBulk(
+  input: BulkDecisionInput,
+): Promise<BulkDecisionResult> {
+  const result: BulkDecisionResult = {
+    succeeded: [],
+    failed: [],
+    regenerationJobCount: 0,
+  };
+
+  // De-dupe so a repeated id can't double-count against the same approval.
+  for (const approvalId of [...new Set(input.approvalIds)]) {
+    try {
+      const { regenerationJobId } = await decideApproval({
+        ...input,
+        approvalId,
+      });
+      result.succeeded.push({ approvalId, regenerationJobId });
+      if (regenerationJobId) result.regenerationJobCount += 1;
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : 500;
+      const message = err instanceof Error ? err.message : "Decision failed";
+      if (status >= 500) {
+        logger.error({ err: String(err), approvalId }, "bulk decision item failed");
+      }
+      result.failed.push({ approvalId, status, message });
+    }
+  }
+
+  return result;
+}
+
 /**
  * Enqueue a revised-plan generation after a rejection. Best-effort: the human
  * rejection is already committed and must not be undone by a queue hiccup, so

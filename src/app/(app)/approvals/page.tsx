@@ -6,6 +6,12 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { ApprovalActions } from "./ApprovalActions";
+import {
+  ApprovalCheckbox,
+  BulkActionBar,
+  BulkSelectionProvider,
+  type BulkItem,
+} from "./BulkSelection";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +56,12 @@ export default async function ApprovalsPage() {
       })
     : [];
 
+  // Minimal serializable descriptor for the client-side bulk selection.
+  const bulkItems: BulkItem[] = pending.map(({ approval }) => ({
+    id: approval.id,
+    subjectType: approval.subjectType,
+  }));
+
   const recentDecisions = await db
     .select({
       approval: schema.approvals,
@@ -84,14 +96,29 @@ export default async function ApprovalsPage() {
           hint="AI-generated implementation plans and customer updates appear here before they take effect."
         />
       ) : (
-        <div className="space-y-4">
+        <BulkSelectionProvider items={bulkItems}>
+          {canDecide && <BulkActionBar />}
+          <div className="space-y-4">
           {pending.map(({ approval, projectName }) => {
             const plan = plans.find((p) => p.id === approval.subjectId);
             const update = updates.find((u) => u.id === approval.subjectId);
             return (
               <div key={approval.id} className="card p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div>
+                  <div className="flex items-start gap-3">
+                    {canDecide && (
+                      <span className="pt-0.5">
+                        <ApprovalCheckbox
+                          id={approval.id}
+                          label={`${
+                            approval.subjectType === "plan"
+                              ? "implementation plan"
+                              : "customer update"
+                          }${projectName ? ` for ${projectName}` : ""}`}
+                        />
+                      </span>
+                    )}
+                    <div>
                     <p className="text-sm font-semibold text-gray-900">
                       {approval.subjectType === "plan"
                         ? `Implementation plan${plan ? ` v${plan.version}` : ""}`
@@ -110,6 +137,7 @@ export default async function ApprovalsPage() {
                         day: "numeric",
                       })}
                     </p>
+                    </div>
                   </div>
                   <StatusBadge status="pending" />
                 </div>
@@ -155,7 +183,8 @@ export default async function ApprovalsPage() {
               </div>
             );
           })}
-        </div>
+          </div>
+        </BulkSelectionProvider>
       )}
 
       {recentDecisions.length > 0 && (

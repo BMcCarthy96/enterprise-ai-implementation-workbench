@@ -152,8 +152,11 @@ test.describe("seeded delivery data", () => {
     const card = page.locator("div.card", { hasText: "Claims Status Tracker" });
     await expect(card).toBeVisible();
     await card.getByRole("button", { name: /^Reject/ }).click();
-    // The auto-regenerate option is on by default for plan rejections.
-    await expect(card.getByRole("checkbox")).toBeChecked();
+    // The auto-regenerate option is on by default for plan rejections. Named
+    // explicitly — the card also carries a bulk-selection checkbox.
+    await expect(
+      card.getByRole("checkbox", { name: /Automatically generate a revised plan/i }),
+    ).toBeChecked();
     await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes("/decision") && r.request().method() === "POST",
@@ -162,6 +165,47 @@ test.describe("seeded delivery data", () => {
     ]);
     // The confirmation only renders when the API returned a regeneration job id.
     await expect(card.getByText(/generating a revised plan/i)).toBeVisible();
+  });
+
+  test("bulk-approves a selection from the queue", async ({ page }) => {
+    await login(page, "manager@northwind.dev");
+    await page.goto("/approvals");
+
+    // Select the two seeded customer updates awaiting review.
+    await page
+      .getByRole("checkbox", { name: /Select customer update for Order Intake/i })
+      .check();
+    await page
+      .getByRole("checkbox", { name: /Select customer update for Patient Onboarding/i })
+      .check();
+    await expect(page.getByTestId("bulk-count")).toHaveText("2 selected");
+
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes("/approvals/bulk") && r.request().method() === "POST",
+      ),
+      page.getByRole("button", { name: "Approve selected" }).click(),
+    ]);
+
+    // Partial-success summary comes straight from the API.
+    await expect(page.getByTestId("bulk-summary")).toHaveText("Approved 2");
+  });
+
+  test("bulk decisions are gated by the approvals.decide permission", async ({ page }) => {
+    await login(page, "engineer@northwind.dev");
+    // A solutions engineer can generate plans but must not decide on them.
+    const res = await page.request.post("/api/v1/approvals/bulk", {
+      data: {
+        approvalIds: ["3f2504e0-4f89-41d3-9a0c-0305e82c3301"],
+        decision: "approved",
+      },
+    });
+    expect(res.status()).toBe(403);
+    // The bulk controls are not rendered for them either.
+    await page.goto("/approvals");
+    await expect(
+      page.getByRole("button", { name: "Approve selected" }),
+    ).toHaveCount(0);
   });
 });
 
@@ -299,13 +343,16 @@ test.describe("full async workflow (requires worker: E2E_WORKER=1)", () => {
       .getByRole("navigation", { name: "Main" })
       .getByRole("link", { name: "Approvals" })
       .click();
-    // Wait for the decision POST itself to complete before navigating — the
-    // button flips to "Working…" instantly, so we can't key off its label.
+    // Scope to this project's card: the queue holds other pending items, so
+    // .first() would decide the wrong one. Wait for the decision POST itself
+    // before navigating — the button flips to "Working…" instantly, so we
+    // can't key off its label.
+    const card = page.locator("div.card", { hasText: "Patient Onboarding Portal" });
     await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes("/decision") && r.request().method() === "POST",
       ),
-      page.getByRole("button", { name: "Approve" }).first().click(),
+      card.getByRole("button", { name: "Approve", exact: true }).first().click(),
     ]);
 
     // Approving materializes the plan's tasks onto the delivery board.

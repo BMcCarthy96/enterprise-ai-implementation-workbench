@@ -50,6 +50,7 @@ flowchart LR
 
 - **DB row = source of truth for jobs; SQS message = delivery only.** Messages carry just a `jobId`. Duplicate delivery (SQS is at-least-once) is harmless because the worker claims jobs with an atomic `queued → running` transition. All observability lives in Postgres, surfaced on the Ops page.
 - **AI output never acts on its own.** Plan generation stores a `pending_approval` plan and opens an approval. Only a human decision materializes milestones/tasks. Customer updates follow the same gate — nothing reaches the customer role without sign-off.
+- **Bulk review without hiding failures.** A reviewer can apply one decision across a selection (`POST /api/v1/approvals/bulk`). Each item stays an independent audited transaction, so a stale selection — someone else already decided one — yields a *partial success* report (`succeeded[]` / `failed[]` / summary) instead of rolling back the reviewer's other valid decisions. Fan-out is capped at 50 ids per request since each rejection can queue a regeneration.
 - **Closed feedback loop.** When a plan is rejected, the reviewer's reason code + note are captured and — with one checkbox, on by default — a revised generation is queued automatically, carrying that feedback into the next prompt; the resulting version records what feedback it addressed. A per-version diff (milestones added/removed, task/risk deltas) makes re-approval fast. This is the loop the Insights dashboard then measures.
 - **Model output is validated, not trusted.** Responses must parse as JSON and pass a zod schema (`PlanContentSchema`); one repair attempt feeds validation errors back to the model; a second failure fails the job into the retry/backoff path (5s → 10s → 20s… capped) and eventually a dead-letter state with a manual retry button.
 - **Prompt-injection hygiene.** User-authored text (requirement notes, etc.) is embedded as JSON inside an `<input_json>` envelope the model is told to treat as data; the envelope extraction is robust to close-tag smuggling (covered by a unit test that caught a real bug during development).
@@ -143,8 +144,8 @@ Auth is a `workbench_session` httpOnly cookie (HS256 JWT, 12h). Async operations
 ## Testing & CI
 
 ```bash
-npm test          # 63 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff, search gating, regeneration guard, SLA risk scoring
-npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff + auto-regenerate, SLA risk, insights, global search, health, CSV export, OpenAPI contract
+npm test          # 70 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff, search gating, regeneration guard, SLA risk scoring, bulk-decision summaries
+npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff + auto-regenerate, bulk approvals, SLA risk, insights, global search, health, CSV export, OpenAPI contract
 E2E_WORKER=1 npx playwright test  # + full async generate→approve→board flow (needs worker running)
 ```
 

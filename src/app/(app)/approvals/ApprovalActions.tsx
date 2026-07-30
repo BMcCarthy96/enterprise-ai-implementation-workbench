@@ -2,16 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
-const REASONS = [
-  { value: "scope_too_broad", label: "Scope too broad" },
-  { value: "scope_too_narrow", label: "Scope too narrow" },
-  { value: "inaccurate_content", label: "Inaccurate content" },
-  { value: "wrong_sequencing", label: "Wrong sequencing" },
-  { value: "estimates_unrealistic", label: "Estimates unrealistic" },
-  { value: "tone_inappropriate", label: "Tone inappropriate" },
-  { value: "other", label: "Other" },
-];
+import { REJECTION_REASONS as REASONS } from "./reasons";
 
 export function ApprovalActions({
   approvalId,
@@ -22,7 +13,7 @@ export function ApprovalActions({
 }) {
   const router = useRouter();
   const [rejecting, setRejecting] = useState(false);
-  const [reasonCode, setReasonCode] = useState(REASONS[0].value);
+  const [reasonCode, setReasonCode] = useState<string>(REASONS[0].value);
   const [note, setNote] = useState("");
   const [regenerate, setRegenerate] = useState(true);
   const [error, setError] = useState<string | null>(null);

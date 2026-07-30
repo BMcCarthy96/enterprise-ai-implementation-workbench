@@ -1,6 +1,7 @@
 import { z, type ZodType } from "zod";
 import {
   ApprovalDecisionSchema,
+  BulkApprovalDecisionSchema,
   CreateCustomerSchema,
   CreateProjectSchema,
   CreateRequirementSchema,
@@ -225,6 +226,18 @@ export function buildOpenApiDocument() {
             },
           ],
           responses: { "200": jsonResponse("Approval list"), ...STD },
+        },
+      },
+      "/api/v1/approvals/bulk": {
+        post: {
+          tags: ["Approvals"],
+          summary:
+            "Apply one decision to a selection of approvals (requires approvals.decide). Items are independent audited transactions, so the response is a partial-success report: { succeeded[], failed[], summary }.",
+          requestBody: body(BulkApprovalDecisionSchema),
+          responses: {
+            "200": jsonResponse("Per-item outcomes (may include failures)"),
+            ...STD,
+          },
         },
       },
       "/api/v1/approvals/{approvalId}/decision": {

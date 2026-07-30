@@ -27,6 +27,7 @@ import { PROMPT_VERSION } from "@/lib/ai/planSchema";
 const PASSWORD = "demo1234";
 const daysAgo = (n: number, hourOffset = 0) =>
   new Date(Date.now() - n * 86400000 + hourOffset * 3600000);
+const hoursAgo = (n: number) => new Date(Date.now() - n * 3600000);
 
 async function main() {
   console.log("Clearing existing data...");
@@ -490,6 +491,55 @@ async function main() {
     requestedBy: manager,
     createdAt: daysAgo(2),
   });
+
+  console.log("Creating additional pending updates for the bulk-review demo...");
+  // Two customer updates awaiting review so the approval queue has enough
+  // volume to demonstrate bulk decisions. Created recently on purpose: older
+  // than 24h would trip the stale-approval SLA and muddy the risk panel.
+  const pendingUpdates = [
+    {
+      projectId: orderProject.id,
+      title: "Order Intake Automation — Milestone Update",
+      body: [
+        "The build phase for Order Intake Automation is progressing on schedule.",
+        "Carrier assignment rules are now feature-complete in the sandbox environment and the structured intake form has passed its first round of validation testing with your ops team's sample orders.",
+        "The exception-queue reason codes remain the one open dependency; once your operations lead signs off on the proposed list we can close out the remaining build tasks.",
+      ].join("\n\n"),
+    },
+    {
+      projectId: onboardingProject.id,
+      title: "Patient Onboarding Portal — Discovery Summary",
+      body: [
+        "Discovery for the Patient Onboarding Portal is nearly complete.",
+        "We have captured four priority requirements covering the digital intake packet, insurance verification checklist, appointment-prep reminders, and the staff status dashboard. Each has been reviewed with your front-desk team for workflow accuracy.",
+        "Next step is a scoped implementation plan for your review, which we expect to circulate this week.",
+      ].join("\n\n"),
+    },
+  ];
+
+  for (const [i, u] of pendingUpdates.entries()) {
+    const [row] = await db
+      .insert(schema.customerUpdates)
+      .values({
+        orgId: northwind.id,
+        projectId: u.projectId,
+        title: u.title,
+        body: u.body,
+        status: "pending_approval",
+        createdBy: manager,
+        createdAt: hoursAgo(4 + i),
+      })
+      .returning();
+    await db.insert(schema.approvals).values({
+      orgId: northwind.id,
+      projectId: u.projectId,
+      subjectType: "customer_update",
+      subjectId: row.id,
+      status: "pending",
+      requestedBy: manager,
+      createdAt: hoursAgo(4 + i),
+    });
+  }
 
   console.log("Writing audit history...");
   const auditRows: Array<{

@@ -60,6 +60,15 @@ export const ApprovalDecisionSchema = z.object({
   regenerate: z.boolean().optional(),
 });
 
+/**
+ * Bulk decision over a selection from the approval queue. Same shape as a
+ * single decision plus the ids; capped so one request can't fan out unbounded
+ * work (each id may enqueue a regeneration job).
+ */
+export const BulkApprovalDecisionSchema = ApprovalDecisionSchema.extend({
+  approvalIds: z.array(z.string().uuid()).min(1).max(50),
+});
+
 export const CreateTaskSchema = z.object({
   title: z.string().min(3).max(300),
   description: z.string().max(4000).optional(),
