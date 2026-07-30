@@ -24,13 +24,13 @@ function SignalChip({ signal }: { signal: SlaSignal }) {
 export function DeliveryRiskPanel({ risks, counts }: DeliveryRisks) {
   const hasRisk = risks.length > 0;
   const accent = counts.breached > 0
-    ? "border-l-red-400"
+    ? "card-accent-red"
     : hasRisk
-      ? "border-l-amber-400"
-      : "border-l-emerald-400";
+      ? "card-accent-amber"
+      : "card-accent-emerald";
 
   return (
-    <div className={`card mb-6 border-l-4 ${accent}`}>
+    <div className={`card mb-6 ${accent}`}>
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
         <h2 className="text-sm font-semibold text-gray-900">Delivery risk</h2>
         <span className="text-xs font-medium text-gray-500">

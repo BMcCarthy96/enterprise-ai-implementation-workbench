@@ -23,6 +23,22 @@ body {
   @apply rounded-lg border border-gray-200 bg-white shadow-sm;
 }
 
+/* Severity accent stripe for cards. These must be declared here rather than as
+   inline `border-l-4 border-l-red-400` utilities: `.card` is unlayered, and
+   unlayered rules beat Tailwind's @layer utilities regardless of specificity,
+   so utility classes would silently lose to .card's own 1px gray border. */
+.card-accent-red {
+  @apply border-l-4 border-l-red-400;
+}
+
+.card-accent-amber {
+  @apply border-l-4 border-l-amber-400;
+}
+
+.card-accent-emerald {
+  @apply border-l-4 border-l-emerald-400;
+}
+
 .btn-primary {
   @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-transparent bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50;
 }
