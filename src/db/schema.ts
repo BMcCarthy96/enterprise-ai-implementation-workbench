@@ -176,6 +176,10 @@ export const projects = pgTable(
     description: text("description"),
     status: projectStatus("status").notNull().default("discovery"),
     targetDate: timestamp("target_date", { withTimezone: true }),
+    // Partial SLA threshold overrides (see src/lib/sla.ts). Only the fields the
+    // project actually overrides are stored, so the rest keep tracking the
+    // org defaults as those evolve. Null = inherit everything.
+    slaPolicy: jsonb("sla_policy"),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),

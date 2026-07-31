@@ -1,7 +1,10 @@
 import { and, asc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { StatusBadge } from "@/components/StatusBadge";
+import type { SlaPolicyOverride } from "@/lib/sla";
+import { SlaPolicyForm } from "./SlaPolicyForm";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +100,13 @@ export default async function ProjectOverviewPage({
             </p>
           )}
         </div>
+
+        {can(session.role, "projects.manage") && (
+          <SlaPolicyForm
+            projectId={projectId}
+            override={(project.slaPolicy ?? null) as SlaPolicyOverride | null}
+          />
+        )}
       </div>
     </div>
   );

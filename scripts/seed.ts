@@ -122,6 +122,11 @@ async function main() {
         "Digitize Harbor Health's new-patient onboarding: intake packets, insurance verification checklist, and appointment-prep reminders integrated with their scheduling system.",
       status: "discovery",
       targetDate: daysAgo(-90),
+      // Healthcare engagement with a tighter review turnaround than the org
+      // default (24h warn / 72h breach). Demonstrates a per-project override
+      // changing the outcome: its pending update is only hours old, so it is
+      // flagged here while the same age would be on track elsewhere.
+      slaPolicy: { approvalWarnHours: 4, approvalBreachHours: 12 },
       createdBy: manager,
       createdAt: daysAgo(5),
     })

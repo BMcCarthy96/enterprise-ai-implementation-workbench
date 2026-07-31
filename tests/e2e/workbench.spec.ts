@@ -176,6 +176,67 @@ test.describe("seeded delivery data", () => {
     await expect(orderRow.getByText(/task blocked/i)).toBeVisible();
   });
 
+  // Runs before the rejection test, which clears the pending approval this
+  // relies on. Resets the policy at the end so it stays hermetic.
+  test("a per-project SLA override changes the risk verdict", async ({ page }) => {
+    await login(page, "manager@northwind.dev");
+    await page.goto("/projects");
+    await page.getByRole("link", { name: "Claims Status Tracker" }).click();
+    // Wait for the client-side transition to commit before reading the id.
+    await page.waitForURL(/\/projects\/[0-9a-f-]{36}$/);
+    const projectId = new URL(page.url()).pathname.split("/")[2];
+
+    // Default thresholds: its 2-day-old approval is only "at risk".
+    await expect(page.getByText("Using org defaults")).toBeVisible();
+    await page.goto("/dashboard");
+    const claimsRow = page
+      .locator("div.card", { hasText: "Delivery risk" })
+      .locator("li", { hasText: "Claims Status Tracker" });
+    await expect(claimsRow.getByText("At risk")).toBeVisible();
+    await expect(claimsRow.getByText("Custom SLA")).toHaveCount(0);
+
+    // Tighten the approval breach threshold to 24h.
+    await page.goto(`/projects/${projectId}`);
+    await page.getByLabel("Breach after an approval waits").fill("24");
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes("/sla-policy") && r.request().method() === "PUT",
+      ),
+      page.getByRole("button", { name: "Save policy" }).click(),
+    ]);
+    await expect(page.getByTestId("sla-saved")).toBeVisible();
+
+    // Same data, stricter policy — now a breach, and flagged as custom.
+    await page.goto("/dashboard");
+    await expect(claimsRow.getByText("Breached")).toBeVisible();
+    await expect(claimsRow.getByText("Custom SLA")).toBeVisible();
+
+    // Incoherent thresholds are rejected against the *resolved* policy.
+    const bad = await page.request.put(`/api/v1/projects/${projectId}/sla-policy`, {
+      data: { approvalWarnHours: 200 },
+    });
+    expect(bad.status()).toBe(400);
+
+    // Reset so the rest of the suite sees default thresholds.
+    const reset = await page.request.delete(`/api/v1/projects/${projectId}/sla-policy`);
+    expect(reset.status()).toBe(200);
+  });
+
+  test("SLA policy changes require projects.manage", async ({ page }) => {
+    await login(page, "engineer@northwind.dev");
+    await page.goto("/projects");
+    await page.getByRole("link", { name: "Claims Status Tracker" }).click();
+    await page.waitForURL(/\/projects\/[0-9a-f-]{36}$/);
+    const projectId = new URL(page.url()).pathname.split("/")[2];
+
+    const res = await page.request.put(`/api/v1/projects/${projectId}/sla-policy`, {
+      data: { approvalWarnHours: 1 },
+    });
+    expect(res.status()).toBe(403);
+    // The editor is not rendered for them either.
+    await expect(page.getByRole("button", { name: "Save policy" })).toHaveCount(0);
+  });
+
   test("rejecting a plan with auto-regenerate queues a revised version", async ({ page }) => {
     await login(page, "manager@northwind.dev");
     await page.goto("/approvals");

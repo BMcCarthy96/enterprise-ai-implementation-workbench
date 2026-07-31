@@ -144,8 +144,8 @@ Auth is a `workbench_session` httpOnly cookie (HS256 JWT, 12h). Async operations
 ## Testing & CI
 
 ```bash
-npm test          # 79 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff, search gating, regeneration guard, SLA risk scoring, bulk-decision summaries, customer-timeline assembly
-npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff + auto-regenerate, bulk approvals, customer timeline leak check, SLA risk, insights, global search, health, CSV export, OpenAPI contract
+npm test          # 96 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff, search gating, regeneration guard, SLA risk scoring + policy resolution, bulk-decision summaries, customer-timeline assembly
+npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff + auto-regenerate, bulk approvals, customer timeline leak check, SLA risk + per-project overrides, insights, global search, health, CSV export, OpenAPI contract
 E2E_WORKER=1 npx playwright test  # + full async generate→approve→board flow (needs worker running)
 ```
 
@@ -178,7 +178,9 @@ The dashboard runs a **policy-driven SLA evaluator** over live delivery data and
 - **Blocked tasks** aging past a warn → breach threshold
 - **Approvals** aging in the human-review queue (the AI-in-the-loop bottleneck)
 
-Risk is **derived on read**, not stored — no extra tables, no drift. Thresholds are one `DEFAULT_SLA_POLICY` object and the scoring is pure, unit-tested [`src/server/services/sla.ts`](src/server/services/sla.ts); the same levels drive an inline risk dot on each project row.
+Risk is **derived on read**, not stored — no extra tables, no drift. The scoring is pure and unit-tested ([`src/server/services/sla.ts`](src/server/services/sla.ts)); the same levels drive an inline risk dot on each project row.
+
+**Per-project overrides.** Thresholds default to `DEFAULT_SLA_POLICY` but any project can tighten or loosen them (`PUT /api/v1/projects/{id}/sla-policy`, `projects.manage`). Only the fields a project actually overrides are persisted, so everything untouched keeps tracking the org defaults as those evolve — and a project scored against its own thresholds is badged **Custom SLA** on the dashboard so a flag is never mistaken for the standard policy. Validation runs against the *resolved* policy rather than the submitted patch: a single-field override can invert an inherited default (set `approvalWarnHours: 200` and it now exceeds the inherited 72h breach), which is unreachable-by-construction and rejected with a 400.
 
 ## Reliability & operability
 

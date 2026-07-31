@@ -55,6 +55,14 @@ export function DeliveryRiskPanel({ risks, counts }: DeliveryRisks) {
               </Link>
               <RiskBadge level={r.level} />
               <div className="flex w-full flex-wrap gap-1.5 sm:w-auto">
+                {r.customPolicy && (
+                  <span
+                    className="inline-flex items-center rounded bg-violet-50 px-1.5 py-0.5 text-xs text-violet-700 ring-1 ring-inset ring-violet-100"
+                    title="Scored against this project's own SLA thresholds"
+                  >
+                    Custom SLA
+                  </span>
+                )}
                 {r.signals.map((s, i) => (
                   <SignalChip key={i} signal={s} />
                 ))}

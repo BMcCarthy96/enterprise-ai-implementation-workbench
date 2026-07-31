@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SLA_POLICY_FIELDS, type SlaPolicy } from "@/lib/sla";
 
 /**
  * Request bodies for the /api/v1 surface. Kept in one module so the OpenAPI
@@ -68,6 +69,26 @@ export const ApprovalDecisionSchema = z.object({
 export const BulkApprovalDecisionSchema = ApprovalDecisionSchema.extend({
   approvalIds: z.array(z.string().uuid()).min(1).max(50),
 });
+
+/**
+ * Per-project SLA threshold overrides. Every field is optional — only what the
+ * project actually overrides is stored, so the rest keep tracking the defaults.
+ * An empty object clears all overrides.
+ *
+ * Bounds come from SLA_POLICY_FIELDS so the schema, the settings form, and the
+ * evaluator can't drift apart. Kept refinement-free so it stays representable
+ * as JSON Schema for the generated docs; the cross-field ordering rule (warn
+ * must not exceed breach) is applied by the handler via `policyOrderingErrors`
+ * against the *resolved* policy, which is the only place it's meaningful.
+ */
+export const UpdateSlaPolicySchema = z.strictObject(
+  Object.fromEntries(
+    SLA_POLICY_FIELDS.map((f) => [
+      f.key,
+      z.number().int().min(f.min).max(f.max).optional(),
+    ]),
+  ) as Record<keyof SlaPolicy, z.ZodOptional<z.ZodNumber>>,
+);
 
 export const CreateTaskSchema = z.object({
   title: z.string().min(3).max(300),

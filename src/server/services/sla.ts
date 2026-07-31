@@ -1,36 +1,36 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { ApiError } from "@/lib/api";
+import {
+  DEFAULT_SLA_POLICY,
+  effectiveOverrides,
+  policyOrderingErrors,
+  resolveSlaPolicy,
+  type SlaPolicy,
+  type SlaPolicyOverride,
+} from "@/lib/sla";
+import { recordAudit } from "./audit";
 
 /**
  * SLA / delivery-risk scoring.
  *
- * Nothing here is stored — risk is *derived* on read from delivery data already
- * in Postgres (project target dates, blocked-task age, approval-queue age). The
- * scoring is pure and unit-tested; the thresholds are one policy object so an
- * org could tune them without touching the logic.
+ * Risk itself is never stored — it's *derived* on read from delivery data
+ * already in Postgres (project target dates, blocked-task age, approval-queue
+ * age). Only the thresholds are persisted, and only where a project overrides
+ * them; the scoring stays pure and unit-tested.
  */
+
+// Re-exported so callers have one import site for policy + evaluation.
+export {
+  DEFAULT_SLA_POLICY,
+  resolveSlaPolicy,
+  effectiveOverrides,
+  type SlaPolicy,
+  type SlaPolicyOverride,
+};
 
 export type RiskLevel = "on_track" | "at_risk" | "breached";
 export type ActiveRiskLevel = Exclude<RiskLevel, "on_track">;
-
-export interface SlaPolicy {
-  /** Flag a project whose target date is within this many days. */
-  targetDateWarningDays: number;
-  /** Blocked task aging thresholds (days since it went blocked). */
-  blockedTaskWarnDays: number;
-  blockedTaskBreachDays: number;
-  /** Approval-queue aging thresholds (hours pending human review). */
-  approvalWarnHours: number;
-  approvalBreachHours: number;
-}
-
-export const DEFAULT_SLA_POLICY: SlaPolicy = {
-  targetDateWarningDays: 14,
-  blockedTaskWarnDays: 3,
-  blockedTaskBreachDays: 7,
-  approvalWarnHours: 24,
-  approvalBreachHours: 72,
-};
 
 export interface SlaSignal {
   kind: "target_date" | "blocked_task" | "stale_approval";
@@ -57,6 +57,8 @@ export interface ProjectRisk {
   status: string;
   level: RiskLevel;
   signals: SlaSignal[];
+  /** True when this project's thresholds differ from the org defaults. */
+  customPolicy?: boolean;
 }
 
 export interface DeliveryRisks {
@@ -167,6 +169,72 @@ function groupAgg(
   return map;
 }
 
+/** The stored override plus its resolved form, for the settings UI. */
+export interface ProjectSlaPolicy {
+  override: SlaPolicyOverride | null;
+  resolved: SlaPolicy;
+  overriddenFields: Array<keyof SlaPolicy>;
+}
+
+export function readProjectSlaPolicy(raw: unknown): ProjectSlaPolicy {
+  const override = (raw ?? null) as SlaPolicyOverride | null;
+  return {
+    override,
+    resolved: resolveSlaPolicy(override),
+    overriddenFields: effectiveOverrides(override),
+  };
+}
+
+/**
+ * Persist a project's SLA overrides. An empty object clears them (back to org
+ * defaults). Validates the *resolved* policy: a warn threshold above its breach
+ * threshold would make the warn level unreachable, and that's only checkable
+ * after merging, since a partial override can invert an inherited default.
+ */
+export async function updateProjectSlaPolicy(input: {
+  projectId: string;
+  orgId: string;
+  actorId: string;
+  override: SlaPolicyOverride;
+}): Promise<ProjectSlaPolicy> {
+  const errors = policyOrderingErrors(resolveSlaPolicy(input.override));
+  if (errors.length > 0) {
+    throw new ApiError(400, errors.join("; "), "invalid_sla_policy");
+  }
+
+  const project = await db.query.projects.findFirst({
+    where: and(
+      eq(schema.projects.id, input.projectId),
+      eq(schema.projects.orgId, input.orgId),
+    ),
+  });
+  if (!project) throw new ApiError(404, "Project not found");
+
+  // Store only genuine overrides so unset fields keep tracking the defaults.
+  const kept = effectiveOverrides(input.override);
+  const toStore =
+    kept.length === 0
+      ? null
+      : Object.fromEntries(kept.map((k) => [k, input.override[k]!]));
+
+  await db
+    .update(schema.projects)
+    .set({ slaPolicy: toStore, updatedAt: new Date() })
+    .where(eq(schema.projects.id, input.projectId));
+
+  await recordAudit({
+    orgId: input.orgId,
+    actorId: input.actorId,
+    action: "project.sla_policy_updated",
+    subjectType: "project",
+    subjectId: input.projectId,
+    projectId: input.projectId,
+    metadata: { before: project.slaPolicy ?? null, after: toStore },
+  });
+
+  return readProjectSlaPolicy(toStore);
+}
+
 /**
  * Org-scoped delivery-risk snapshot for the dashboard: every actively-delivering
  * project that is at risk or breached, worst first.
@@ -181,6 +249,7 @@ export async function getDeliveryRisks(
       name: schema.projects.name,
       status: schema.projects.status,
       targetDate: schema.projects.targetDate,
+      slaPolicy: schema.projects.slaPolicy,
       customerName: schema.customers.name,
     })
     .from(schema.projects)
@@ -236,8 +305,10 @@ export async function getDeliveryRisks(
   );
 
   const risks = projects
-    .map((p) =>
-      assessProjectRisk(
+    .map((p) => {
+      // Each project is scored against its own resolved thresholds.
+      const override = p.slaPolicy as SlaPolicyOverride | null;
+      const risk = assessProjectRisk(
         {
           projectId: p.id,
           projectName: p.name,
@@ -250,8 +321,10 @@ export async function getDeliveryRisks(
           oldestPendingApprovalAt: pendingBy.get(p.id)?.oldest ?? null,
         },
         now,
-      ),
-    )
+        resolveSlaPolicy(override),
+      );
+      return { ...risk, customPolicy: effectiveOverrides(override).length > 0 };
+    })
     .filter((r) => r.level !== "on_track")
     .sort(
       (a, b) =>

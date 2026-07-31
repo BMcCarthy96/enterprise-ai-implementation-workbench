@@ -10,6 +10,7 @@ import {
   RegisterDocumentSchema,
   UpdateProjectSchema,
   UpdateRequirementSchema,
+  UpdateSlaPolicySchema,
   UpdateTaskSchema,
 } from "@/lib/apiSchemas";
 
@@ -209,6 +210,38 @@ export function buildOpenApiDocument() {
             "Queue AI customer-update digest (requires updates.draft; async)",
           parameters: [pathParam("projectId")],
           responses: { "202": jsonResponse("Job accepted: { jobId }"), ...STD },
+        },
+      },
+      "/api/v1/projects/{projectId}/sla-policy": {
+        get: {
+          tags: ["Projects"],
+          summary:
+            "Current SLA overrides plus the resolved thresholds in force (requires internal.view)",
+          parameters: [pathParam("projectId")],
+          responses: {
+            "200": jsonResponse("{ override, resolved, overriddenFields }"),
+            ...STD,
+          },
+        },
+        put: {
+          tags: ["Projects"],
+          summary:
+            "Replace this project's SLA overrides (requires projects.manage). Send only the fields to override; an empty object resets to org defaults. Rejected with 400 if a warn threshold would exceed its breach threshold once merged.",
+          parameters: [pathParam("projectId")],
+          requestBody: body(UpdateSlaPolicySchema),
+          responses: {
+            "200": jsonResponse("Updated policy"),
+            ...STD,
+            "400": {
+              description: "Validation failed, or warn threshold exceeds breach",
+            },
+          },
+        },
+        delete: {
+          tags: ["Projects"],
+          summary: "Clear all SLA overrides (requires projects.manage)",
+          parameters: [pathParam("projectId")],
+          responses: { "200": jsonResponse("Reset to defaults"), ...STD },
         },
       },
       "/api/v1/approvals": {
