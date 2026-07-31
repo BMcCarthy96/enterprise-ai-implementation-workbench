@@ -15,6 +15,40 @@ A multi-tenant internal platform for software implementation teams: it turns mes
 | **Solutions Engineer** | Requirements intake, plan generation, task board, drafts — but *cannot* approve their own AI output |
 | **Customer Stakeholder** | Read-only external view: project status and *published* updates only |
 
+## Features
+
+**Requirements → AI implementation plans**
+- Structured requirements intake per project (title, detail, priority, lifecycle status)
+- Plan generation runs as a **background job** (SQS → worker → Bedrock/Claude, or a deterministic offline mock) and returns `202 { jobId }` — the UI polls, nothing blocks
+- Model output must parse as JSON *and* pass a zod schema before it is persisted, with one automatic repair attempt that feeds the validation errors back to the model
+- Plans are **versioned**; approving v2 supersedes v1, and each version carries the `promptVersion` it was generated under
+
+**Human-in-the-loop approval**
+- Every AI artifact — plans *and* customer updates — lands in an approval queue; generation never mutates delivery state, only a human decision does
+- Rejections capture a **reason code + note**, which feed the next regeneration's prompt automatically (the closed feedback loop the Insights dashboard then measures); the revised version records the feedback it addressed
+- **Per-version diff** (milestones added/removed, task/risk deltas) so re-approval doesn't mean re-reading the whole plan
+- **Bulk decisions** across a selection, with partial-success reporting instead of all-or-nothing rollback
+- Double-decision attempts are rejected with a `409`
+
+**Delivery execution**
+- Approved plans materialize into **milestones and tasks** in one transaction
+- Kanban-style board with status transitions, assignees, and priorities
+- Document uploads straight to **S3 via presigned URLs**, with org/project-namespaced keys
+
+**Visibility & reporting**
+- [**SLA & delivery risk**](#sla--delivery-risk) on the dashboard — at-risk/breached projects with the signal that tripped, plus **per-project threshold overrides**
+- [**Insights & evals**](#insights--evals) — approval rate, generation success rate, latency, rejection-reason breakdown, and quality grouped by prompt version
+- [**Customer-facing timeline**](#customer-facing-status-timeline) — external progress view built from an allowlist of customer-safe sources, so internal review history can't leak
+- [**Global search**](#global-search) — ⌘K palette over projects, requirements, and customers, role-gated server-side
+- **Append-only audit log** of every mutation, filterable in-app and exportable as CSV
+
+**Platform**
+- **Multi-tenant** by construction: every session carries an `orgId` and every resource lookup is org-scoped, so a guessed UUID from another tenant 404s
+- **RBAC** across four roles, enforced on API routes, server components, and navigation alike
+- [**Reliability**](#reliability--operability): exponential-backoff retries, dead-letter parking with one-click retry, atomic job claiming, structured logs, health probe
+- [**OpenAPI 3.1 docs**](#api) generated from the same zod schemas the handlers validate with — they cannot drift from behavior
+- Runs **100% locally** on Docker + LocalStack; the switch to real AWS is env vars, not code
+
 ## Architecture
 
 ```mermaid
