@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { withAuth } from "@/lib/api";
+import { uuidParam } from "@/server/services/access";
 
 export const GET = withAuth("audit.view", async (req, { session }) => {
-  const projectId = req.nextUrl.searchParams.get("projectId");
+  const rawProjectId = req.nextUrl.searchParams.get("projectId");
+  const projectId = rawProjectId ? uuidParam(rawProjectId, "projectId") : null;
   const limit = Math.min(
     Number(req.nextUrl.searchParams.get("limit") ?? 100),
     500,

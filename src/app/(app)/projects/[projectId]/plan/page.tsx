@@ -1,5 +1,7 @@
-import { desc, eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { and, desc, eq, sql } from "drizzle-orm";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { PlanContentSchema } from "@/lib/ai/planSchema";
@@ -17,12 +19,45 @@ export default async function PlanPage({
 }) {
   const { projectId } = await params;
   const session = (await getSession())!;
+  if (!can(session.role, "internal.view")) redirect(`/projects/${projectId}`);
   const canGenerate = can(session.role, "plans.generate");
 
-  const plans = await db.query.plans.findMany({
-    where: eq(schema.plans.projectId, projectId),
-    orderBy: desc(schema.plans.version),
-  });
+  const { plans, trace, citations } = await withTenantTransaction(
+    session.orgId,
+    async () => {
+      const plans = await db.query.plans.findMany({
+        where: eq(schema.plans.projectId, projectId),
+        orderBy: desc(schema.plans.version),
+      });
+      const latest = plans[0];
+      const trace = latest?.generatedByJobId && can(session.role, "audit.view")
+        ? await db.query.aiRuns.findFirst({
+            where: and(
+              eq(schema.aiRuns.orgId, session.orgId),
+              eq(schema.aiRuns.jobId, latest.generatedByJobId),
+            ),
+          })
+        : null;
+      const citations = latest
+        ? (await db.execute(sql`
+            SELECT pc.source_ref AS "sourceRef", d.file_name AS "fileName",
+                   dc.page_number AS "pageNumber", dc.heading AS heading
+            FROM plan_citations pc
+            INNER JOIN document_chunks dc ON dc.id = pc.chunk_id
+            INNER JOIN documents d ON d.id = dc.document_id
+            WHERE pc.plan_id = ${latest.id} AND pc.org_id = ${session.orgId}
+            ORDER BY pc.source_ref
+          `)) as unknown as Array<{
+            sourceRef: string;
+            fileName: string;
+            pageNumber: number | null;
+            heading: string | null;
+          }>
+        : [];
+      return { plans, trace, citations };
+    },
+    session.userId,
+  );
   const latest = plans[0];
 
   const generateButton = canGenerate ? (
@@ -40,6 +75,11 @@ export default async function PlanPage({
         hint="Generate one from the captured requirements. The plan is drafted by AI, then reviewed and approved by an implementation manager before any tasks are created."
       >
         {generateButton}
+        {trace && (
+          <Link href={`/ai-runs/${trace.id}`} className="btn-secondary">
+            View generation trace
+          </Link>
+        )}
       </EmptyState>
     );
   }
@@ -132,6 +172,11 @@ export default async function PlanPage({
             <p className="text-sm leading-relaxed text-gray-600">
               {content.summary}
             </p>
+            {content.summarySourceRefs?.length ? (
+              <p className="mt-3 text-xs text-indigo-700">
+                Sources: {content.summarySourceRefs.join(", ")}
+              </p>
+            ) : null}
           </div>
 
           <div className="card">
@@ -157,6 +202,7 @@ export default async function PlanPage({
                   <p className="mb-2 ml-7 text-xs text-gray-500">
                     {m.description}
                   </p>
+                  {m.sourceRefs?.length ? <p className="mb-2 ml-7 font-mono text-[11px] text-indigo-600">Sources: {m.sourceRefs.join(", ")}</p> : null}
                   <ul className="ml-7 space-y-1">
                     {m.tasks.map((t, j) => (
                       <li key={j} className="flex items-baseline gap-2 text-sm">
@@ -167,6 +213,7 @@ export default async function PlanPage({
                             {t.estimateHours}h
                           </span>
                         )}
+                        {t.sourceRefs?.length ? <span className="font-mono text-[11px] text-indigo-600">[{t.sourceRefs.join(", ")}]</span> : null}
                       </li>
                     ))}
                   </ul>
@@ -223,6 +270,22 @@ export default async function PlanPage({
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {citations.length > 0 && (
+        <div className="mt-6 card p-5">
+          <h3 className="text-sm font-semibold text-gray-900">Grounding sources</h3>
+          <p className="mt-1 text-xs text-gray-500">The model was given these project-scoped excerpts; source refs are validated before approval.</p>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {citations.map((citation) => (
+              <li key={citation.sourceRef} className="rounded-md border border-indigo-100 bg-indigo-50/50 px-3 py-2 text-xs">
+                <span className="font-mono font-semibold text-indigo-700">{citation.sourceRef}</span>
+                <span className="ml-2 text-gray-700">{citation.fileName}</span>
+                <span className="ml-2 text-gray-500">{citation.pageNumber ? `page ${citation.pageNumber}` : citation.heading ?? "document excerpt"}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

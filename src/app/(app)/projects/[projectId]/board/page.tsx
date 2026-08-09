@@ -1,5 +1,6 @@
 import { asc, eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { redirect } from "next/navigation";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { EmptyState } from "@/components/EmptyState";
@@ -22,22 +23,28 @@ export default async function BoardPage({
 }) {
   const { projectId } = await params;
   const session = (await getSession())!;
+  if (!can(session.role, "internal.view")) redirect(`/projects/${projectId}`);
   const canManage = can(session.role, "tasks.manage");
 
-  const tasks = await db
-    .select({
-      task: schema.tasks,
-      assigneeName: schema.users.name,
-      milestoneName: schema.milestones.name,
-    })
-    .from(schema.tasks)
-    .leftJoin(schema.users, eq(schema.tasks.assigneeId, schema.users.id))
-    .leftJoin(
-      schema.milestones,
-      eq(schema.tasks.milestoneId, schema.milestones.id),
-    )
-    .where(eq(schema.tasks.projectId, projectId))
-    .orderBy(asc(schema.tasks.sortOrder), asc(schema.tasks.createdAt));
+  const tasks = await withTenantTransaction(
+    session.orgId,
+    () =>
+      db
+        .select({
+          task: schema.tasks,
+          assigneeName: schema.users.name,
+          milestoneName: schema.milestones.name,
+        })
+        .from(schema.tasks)
+        .leftJoin(schema.users, eq(schema.tasks.assigneeId, schema.users.id))
+        .leftJoin(
+          schema.milestones,
+          eq(schema.tasks.milestoneId, schema.milestones.id),
+        )
+        .where(eq(schema.tasks.projectId, projectId))
+        .orderBy(asc(schema.tasks.sortOrder), asc(schema.tasks.createdAt)),
+    session.userId,
+  );
 
   if (tasks.length === 0) {
     return (

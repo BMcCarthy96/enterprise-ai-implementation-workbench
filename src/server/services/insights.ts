@@ -18,7 +18,7 @@ export interface DecisionRow {
 }
 
 export interface JobRow {
-  type: "plan_generation" | "customer_update_digest";
+  type: "plan_generation" | "customer_update_digest" | "document_ingest";
   status: "queued" | "running" | "succeeded" | "failed" | "dead_letter";
   attempts: number;
   durationMs: number | null;
@@ -27,6 +27,19 @@ export interface JobRow {
 export interface PlanRow {
   promptVersion: string | null;
   status: string;
+}
+
+export interface AiRunRow {
+  artifactType: "plan" | "customer_update" | "document_ingest" | "eval";
+  status: "running" | "succeeded" | "failed";
+  finalOutcome: string | null;
+  costUsd: string | null;
+  latencyMs: number | null;
+}
+
+export interface AiCallRow {
+  operation: "generate" | "repair" | "judge" | "embed";
+  outcome: "valid" | "invalid" | "blocked" | "failed";
 }
 
 // --- Pure aggregation helpers -------------------------------------------------
@@ -145,6 +158,63 @@ export function tally<T extends string>(
   return [...counts.entries()].map(([key, count]) => ({ key, count }));
 }
 
+export interface AiQualityStats {
+  runCount: number;
+  succeeded: number;
+  totalCostUsd: number | null;
+  costPerPlanUsd: number | null;
+  costPerApprovedPlanUsd: number | null;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
+  firstAttemptValidityRate: number | null;
+  repairRescueRate: number | null;
+  guardrailFailures: number;
+}
+
+export function computeAiQuality(input: {
+  runs: AiRunRow[];
+  calls: AiCallRow[];
+  approvedPlanCount: number;
+}): AiQualityStats {
+  const planRuns = input.runs.filter((run) => run.artifactType === "plan");
+  const latencies = planRuns
+    .map((run) => run.latencyMs)
+    .filter((value): value is number => value != null)
+    .sort((a, b) => a - b);
+  const costs = planRuns
+    .map((run) => (run.costUsd == null ? null : Number(run.costUsd)))
+    .filter((value): value is number => value != null && Number.isFinite(value));
+  const initialCalls = input.calls.filter((call) => call.operation === "generate");
+  const repairedRuns = planRuns.filter((run) => run.finalOutcome === "repaired").length;
+  const rescuedRuns = planRuns.filter((run) => run.finalOutcome === "repaired" && run.status === "succeeded").length;
+  const guardrailFailures = input.calls.filter(
+    (call) => call.outcome === "blocked" || call.outcome === "invalid",
+  ).length;
+  const totalCostUsd = costs.length ? round(costs.reduce((sum, value) => sum + value, 0), 6) : null;
+  return {
+    runCount: planRuns.length,
+    succeeded: planRuns.filter((run) => run.status === "succeeded").length,
+    totalCostUsd,
+    costPerPlanUsd: totalCostUsd != null && planRuns.length ? round(totalCostUsd / planRuns.length, 6) : null,
+    costPerApprovedPlanUsd:
+      totalCostUsd != null && input.approvedPlanCount
+        ? round(totalCostUsd / input.approvedPlanCount, 6)
+        : null,
+    p50LatencyMs: percentile(latencies, 0.5),
+    p95LatencyMs: percentile(latencies, 0.95),
+    firstAttemptValidityRate: initialCalls.length
+      ? Math.round((initialCalls.filter((call) => call.outcome === "valid").length / initialCalls.length) * 100)
+      : null,
+    repairRescueRate: repairedRuns ? Math.round((rescuedRuns / repairedRuns) * 100) : null,
+    guardrailFailures,
+  };
+}
+
+function percentile(sorted: number[], fraction: number): number | null {
+  if (!sorted.length) return null;
+  return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)];
+}
+
 function round(n: number, dp: number): number {
   const f = 10 ** dp;
   return Math.round(n * f) / f;
@@ -153,22 +223,24 @@ function round(n: number, dp: number): number {
 // --- DB-backed wrapper --------------------------------------------------------
 
 export async function getInsights(orgId: string) {
-  const [approvals, jobs, plans, projects, tasks, requirements, updates] =
-    await Promise.all([
-      db.query.approvals.findMany({
-        where: eq(schema.approvals.orgId, orgId),
-      }),
-      db.query.jobs.findMany({ where: eq(schema.jobs.orgId, orgId) }),
-      db.query.plans.findMany({ where: eq(schema.plans.orgId, orgId) }),
-      db.query.projects.findMany({ where: eq(schema.projects.orgId, orgId) }),
-      db.query.tasks.findMany({ where: eq(schema.tasks.orgId, orgId) }),
-      db.query.requirements.findMany({
-        where: eq(schema.requirements.orgId, orgId),
-      }),
-      db.query.customerUpdates.findMany({
-        where: eq(schema.customerUpdates.orgId, orgId),
-      }),
-    ]);
+  // A tenant request uses one transaction-bound pg client. Keep operations
+  // sequential: concurrent client.query calls are deprecated in pg 8 and will
+  // be rejected by pg 9.
+  const approvals = await db.query.approvals.findMany({
+    where: eq(schema.approvals.orgId, orgId),
+  });
+  const jobs = await db.query.jobs.findMany({ where: eq(schema.jobs.orgId, orgId) });
+  const plans = await db.query.plans.findMany({ where: eq(schema.plans.orgId, orgId) });
+  const projects = await db.query.projects.findMany({ where: eq(schema.projects.orgId, orgId) });
+  const tasks = await db.query.tasks.findMany({ where: eq(schema.tasks.orgId, orgId) });
+  const requirements = await db.query.requirements.findMany({
+    where: eq(schema.requirements.orgId, orgId),
+  });
+  const updates = await db.query.customerUpdates.findMany({
+    where: eq(schema.customerUpdates.orgId, orgId),
+  });
+  const aiRuns = await db.query.aiRuns.findMany({ where: eq(schema.aiRuns.orgId, orgId) });
+  const aiCalls = await db.query.aiCalls.findMany({ where: eq(schema.aiCalls.orgId, orgId) });
 
   const planDecisions: DecisionRow[] = approvals
     .filter((a) => a.subjectType === "plan")
@@ -207,6 +279,17 @@ export async function getInsights(orgId: string) {
     byPromptVersion: computeByPromptVersion(
       plans.map((p) => ({ promptVersion: p.promptVersion, status: p.status })),
     ),
+    aiQuality: computeAiQuality({
+      runs: aiRuns.map((run) => ({
+        artifactType: run.artifactType,
+        status: run.status,
+        finalOutcome: run.finalOutcome,
+        costUsd: run.costUsd,
+        latencyMs: run.latencyMs,
+      })),
+      calls: aiCalls.map((call) => ({ operation: call.operation, outcome: call.outcome })),
+      approvedPlanCount: plans.filter((plan) => plan.status === "approved" || plan.status === "superseded").length,
+    }),
     delivery: {
       projectsByStatus: tally(projects.map((p) => p.status)),
       tasksByStatus: tally(tasks.map((t) => t.status)),

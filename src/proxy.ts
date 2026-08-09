@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
 const PUBLIC_PATHS = [
+  "/",
   "/login",
   "/api/auth/login",
+  "/api/demo/session",
   "/api/openapi.json",
   "/api/health",
 ];

@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { EmptyState } from "@/components/EmptyState";
@@ -19,16 +19,21 @@ export default async function ActivityPage({
     );
   }
 
-  const events = await db
-    .select({
-      event: schema.auditEvents,
-      actorName: schema.users.name,
-    })
-    .from(schema.auditEvents)
-    .leftJoin(schema.users, eq(schema.auditEvents.actorId, schema.users.id))
-    .where(eq(schema.auditEvents.projectId, projectId))
-    .orderBy(desc(schema.auditEvents.createdAt))
-    .limit(200);
+  const events = await withTenantTransaction(
+    session.orgId,
+    () =>
+      db
+        .select({
+          event: schema.auditEvents,
+          actorName: schema.users.name,
+        })
+        .from(schema.auditEvents)
+        .leftJoin(schema.users, eq(schema.auditEvents.actorId, schema.users.id))
+        .where(eq(schema.auditEvents.projectId, projectId))
+        .orderBy(desc(schema.auditEvents.createdAt))
+        .limit(200),
+    session.userId,
+  );
 
   if (events.length === 0) {
     return <EmptyState title="No activity recorded for this project yet" />;

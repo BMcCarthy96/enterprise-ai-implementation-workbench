@@ -13,7 +13,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Implementation Workbench",
+  title: {
+    default: "Enterprise AI Implementation Workbench",
+    template: "%s · Enterprise AI Implementation Workbench",
+  },
   description:
     "Enterprise AI implementation workbench: requirements intake, AI scoping plans, approvals, delivery tracking, and audit trails.",
 };

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
@@ -13,24 +13,28 @@ export const dynamic = "force-dynamic";
 export default async function ProjectsPage() {
   const session = (await getSession())!;
 
-  const rows = await db
-    .select({
-      project: schema.projects,
-      customerName: schema.customers.name,
-    })
-    .from(schema.projects)
-    .innerJoin(
-      schema.customers,
-      eq(schema.projects.customerId, schema.customers.id),
-    )
-    .where(eq(schema.projects.orgId, session.orgId))
-    .orderBy(desc(schema.projects.createdAt));
-
-  const customers = await db.query.customers.findMany({
-    where: eq(schema.customers.orgId, session.orgId),
-  });
-
   const canManage = can(session.role, "projects.manage");
+  const { rows, customers } = await withTenantTransaction(
+    session.orgId,
+    async () => ({
+      rows: await db
+        .select({
+          project: schema.projects,
+          customerName: schema.customers.name,
+        })
+        .from(schema.projects)
+        .innerJoin(
+          schema.customers,
+          eq(schema.projects.customerId, schema.customers.id),
+        )
+        .where(eq(schema.projects.orgId, session.orgId))
+        .orderBy(desc(schema.projects.createdAt)),
+      customers: await db.query.customers.findMany({
+        where: eq(schema.customers.orgId, session.orgId),
+      }),
+    }),
+    session.userId,
+  );
 
   return (
     <div>

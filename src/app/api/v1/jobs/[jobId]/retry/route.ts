@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { withAuth, ApiError } from "@/lib/api";
+import { uuidParam } from "@/server/services/access";
 import { retryJob } from "@/server/services/jobs";
 
 type Params = { jobId: string };
@@ -9,9 +10,10 @@ type Params = { jobId: string };
 export const POST = withAuth<Params>(
   "ops.retry_jobs",
   async (_req, { session }, params) => {
+    const jobId = uuidParam(params.jobId, "jobId");
     const job = await db.query.jobs.findFirst({
       where: and(
-        eq(schema.jobs.id, params.jobId),
+        eq(schema.jobs.id, jobId),
         eq(schema.jobs.orgId, session.orgId),
       ),
     });

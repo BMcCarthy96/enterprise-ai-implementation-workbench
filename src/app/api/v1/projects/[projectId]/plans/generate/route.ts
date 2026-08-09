@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { withAuth, ApiError } from "@/lib/api";
 import { requireProject } from "@/server/services/access";
 import { createAndEnqueueJob } from "@/server/services/jobs";
+import {
+  DEMO_ESTIMATED_RESERVATION_USD,
+  reconcileDemoGeneration,
+  reserveDemoGeneration,
+} from "@/server/services/demo";
 
 type Params = { projectId: string };
 
@@ -31,22 +36,35 @@ export const POST = withAuth<Params>(
       where: and(
         eq(schema.jobs.projectId, project.id),
         eq(schema.jobs.type, "plan_generation"),
-        eq(schema.jobs.status, "queued"),
+        inArray(schema.jobs.status, ["queued", "running"]),
       ),
     });
     if (pending) {
       throw new ApiError(
         409,
-        "A plan generation job is already queued for this project",
+        "A plan generation job is already active for this project",
       );
     }
 
-    const jobId = await createAndEnqueueJob({
-      orgId: session.orgId,
-      projectId: project.id,
-      type: "plan_generation",
-      requestedBy: session.userId,
-    });
-    return NextResponse.json({ jobId }, { status: 202 });
+    const reservedDemoUsd = session.demoWorkspaceId
+      ? await reserveDemoGeneration({ orgId: session.orgId, userId: session.userId })
+      : 0;
+    try {
+      const jobId = await createAndEnqueueJob({
+        orgId: session.orgId,
+        projectId: project.id,
+        type: "plan_generation",
+        payload: reservedDemoUsd
+          ? { demoReservationUsd: DEMO_ESTIMATED_RESERVATION_USD }
+          : undefined,
+        requestedBy: session.userId,
+      });
+      return NextResponse.json({ jobId }, { status: 202 });
+    } catch (error) {
+      if (reservedDemoUsd) {
+        await reconcileDemoGeneration({ orgId: session.orgId, reservedUsd: reservedDemoUsd });
+      }
+      throw error;
+    }
   },
 );

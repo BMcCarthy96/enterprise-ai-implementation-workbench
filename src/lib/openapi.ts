@@ -98,6 +98,18 @@ export function buildOpenApiDocument() {
           responses: { "200": jsonResponse("Signed out") },
         },
       },
+      "/api/demo/session": {
+        post: {
+          tags: ["Demo"],
+          summary: "Create or resume an isolated synthetic demo workspace",
+          security: [],
+          responses: {
+            "200": jsonResponse("Workspace session and remaining quotas"),
+            "429": { description: "Demo capacity or quota reached" },
+            "503": { description: "Demo budget or dependency unavailable" },
+          },
+        },
+      },
       "/api/v1/search": {
         get: {
           tags: ["Search"],
@@ -319,7 +331,7 @@ export function buildOpenApiDocument() {
           parameters: [pathParam("projectId")],
           requestBody: body(PresignDocumentSchema),
           responses: {
-            "200": jsonResponse("{ uploadUrl, s3Key }"),
+            "200": jsonResponse("{ uploadUrl, documentId, s3Key }"),
             ...STD,
           },
         },
@@ -346,6 +358,33 @@ export function buildOpenApiDocument() {
           summary: "Get a presigned S3 download URL",
           parameters: [pathParam("documentId")],
           responses: { "200": jsonResponse("{ url }"), ...STD },
+        },
+      },
+      "/api/v1/documents/{documentId}/complete": {
+        post: {
+          tags: ["Documents"],
+          summary: "Verify an S3 upload and enqueue idempotent ingestion",
+          parameters: [pathParam("documentId")],
+          responses: { "200": jsonResponse("{ document, jobId }"), ...STD },
+        },
+      },
+      "/api/v1/ai-runs": {
+        get: {
+          tags: ["AI quality"],
+          summary: "List tenant-scoped AI run traces",
+          parameters: [
+            { name: "projectId", in: "query", schema: { type: "string", format: "uuid" } },
+            { name: "limit", in: "query", schema: { type: "integer", maximum: 100 } },
+          ],
+          responses: { "200": jsonResponse("{ runs }"), ...STD },
+        },
+      },
+      "/api/v1/ai-runs/{runId}": {
+        get: {
+          tags: ["AI quality"],
+          summary: "Inspect a run's sanitized call timeline and citations",
+          parameters: [pathParam("runId")],
+          responses: { "200": jsonResponse("{ run, calls, citations }"), ...STD },
         },
       },
       "/api/v1/audit": {
@@ -387,7 +426,7 @@ export function buildOpenApiDocument() {
       "/api/v1/jobs": {
         get: {
           tags: ["Operations"],
-          summary: "List background jobs (requires ops.view)",
+          summary: "List background jobs with associated aiRunId values (requires ops.view)",
           parameters: [
             { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } },
           ],

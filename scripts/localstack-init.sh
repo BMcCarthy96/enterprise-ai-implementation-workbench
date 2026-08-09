@@ -12,6 +12,6 @@ DLQ_ARN=$(awslocal sqs get-queue-attributes \
   --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
 
 awslocal sqs create-queue --queue-name workbench-jobs \
-  --attributes "{\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${DLQ_ARN}\\\",\\\"maxReceiveCount\\\":\\\"5\\\"}\",\"VisibilityTimeout\":\"120\"}"
+  --attributes "{\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${DLQ_ARN}\\\",\\\"maxReceiveCount\\\":\\\"5\\\"}\",\"VisibilityTimeout\":\"720\",\"ReceiveMessageWaitTimeSeconds\":\"20\"}"
 
 echo "workbench: S3 bucket + SQS queues ready"

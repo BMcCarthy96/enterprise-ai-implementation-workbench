@@ -4,6 +4,7 @@ import {
   computeJobReliability,
   computeRejectionReasons,
   computeByPromptVersion,
+  computeAiQuality,
   tally,
   type DecisionRow,
   type JobRow,
@@ -120,5 +121,29 @@ describe("tally", () => {
     expect(result).toContainEqual({ key: "todo", count: 2 });
     expect(result).toContainEqual({ key: "done", count: 1 });
     expect(result).toContainEqual({ key: "blocked", count: 1 });
+  });
+});
+
+describe("computeAiQuality", () => {
+  it("reports cost, latency percentiles, first-pass validity, and repair rescue", () => {
+    const result = computeAiQuality({
+      runs: [
+        { artifactType: "plan", status: "succeeded", finalOutcome: "succeeded", costUsd: "0.010000", latencyMs: 1000 },
+        { artifactType: "plan", status: "succeeded", finalOutcome: "repaired", costUsd: "0.030000", latencyMs: 3000 },
+      ],
+      calls: [
+        { operation: "generate", outcome: "valid" },
+        { operation: "generate", outcome: "invalid" },
+        { operation: "repair", outcome: "valid" },
+      ],
+      approvedPlanCount: 1,
+    });
+    expect(result.totalCostUsd).toBe(0.04);
+    expect(result.costPerApprovedPlanUsd).toBe(0.04);
+    expect(result.p50LatencyMs).toBe(1000);
+    expect(result.p95LatencyMs).toBe(3000);
+    expect(result.firstAttemptValidityRate).toBe(50);
+    expect(result.repairRescueRate).toBe(100);
+    expect(result.guardrailFailures).toBe(1);
   });
 });

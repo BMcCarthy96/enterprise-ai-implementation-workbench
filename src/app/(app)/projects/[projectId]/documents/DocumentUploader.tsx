@@ -29,7 +29,7 @@ export function DocumentUploader({ projectId }: { projectId: string }) {
         const data = await presignRes.json().catch(() => null);
         throw new Error(data?.error ?? "Failed to prepare upload");
       }
-      const { uploadUrl, s3Key } = await presignRes.json();
+      const { uploadUrl, documentId } = await presignRes.json();
 
       const putRes = await fetch(uploadUrl, {
         method: "PUT",
@@ -39,19 +39,15 @@ export function DocumentUploader({ projectId }: { projectId: string }) {
       if (!putRes.ok) throw new Error("S3 upload failed");
 
       const registerRes = await fetch(
-        `/api/v1/projects/${projectId}/documents`,
+        `/api/v1/documents/${documentId}/complete`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fileName: file.name,
-            contentType: file.type || "application/octet-stream",
-            sizeBytes: file.size,
-            s3Key,
-          }),
         },
       );
-      if (!registerRes.ok) throw new Error("Failed to register document");
+      if (!registerRes.ok) {
+        const data = await registerRes.json().catch(() => null);
+        throw new Error(data?.error ?? "Failed to verify document upload");
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -92,6 +88,7 @@ export function DocumentList({
     fileName: string;
     sizeBytes: number;
     createdAt: string;
+    status?: string;
   }>;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +133,11 @@ export function DocumentList({
                   year: "numeric",
                 })}
               </p>
+              {d.status && d.status !== "ready" && (
+                <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-indigo-600">
+                  {d.status.replace("_", " ")}
+                </p>
+              )}
             </div>
             <button
               className="btn-secondary shrink-0"

@@ -1,5 +1,6 @@
 import { desc, eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { redirect } from "next/navigation";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { DocumentList, DocumentUploader } from "./DocumentUploader";
@@ -13,12 +14,18 @@ export default async function DocumentsPage({
 }) {
   const { projectId } = await params;
   const session = (await getSession())!;
+  if (!can(session.role, "internal.view")) redirect(`/projects/${projectId}`);
   const canUpload = can(session.role, "documents.upload");
 
-  const docs = await db.query.documents.findMany({
-    where: eq(schema.documents.projectId, projectId),
-    orderBy: desc(schema.documents.createdAt),
-  });
+  const docs = await withTenantTransaction(
+    session.orgId,
+    () =>
+      db.query.documents.findMany({
+        where: eq(schema.documents.projectId, projectId),
+        orderBy: desc(schema.documents.createdAt),
+      }),
+    session.userId,
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -29,6 +36,7 @@ export default async function DocumentsPage({
             fileName: d.fileName,
             sizeBytes: d.sizeBytes,
             createdAt: d.createdAt.toISOString(),
+            status: d.status,
           }))}
         />
       </div>

@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { ProjectTimeline } from "@/components/ProjectTimeline";
@@ -17,15 +17,20 @@ export default async function TimelinePage({
   const session = (await getSession())!;
 
   // Org-scoped: a guessed id from another tenant 404s rather than leaking.
-  const project = await db.query.projects.findFirst({
-    where: and(
-      eq(schema.projects.id, projectId),
-      eq(schema.projects.orgId, session.orgId),
-    ),
-  });
-  if (!project) notFound();
-
-  const timeline = await getProjectTimeline(projectId, project);
+  const timeline = await withTenantTransaction(
+    session.orgId,
+    async () => {
+      const project = await db.query.projects.findFirst({
+        where: and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.orgId, session.orgId),
+        ),
+      });
+      if (!project) notFound();
+      return getProjectTimeline(projectId, project);
+    },
+    session.userId,
+  );
   const internal = can(session.role, "internal.view");
 
   return (

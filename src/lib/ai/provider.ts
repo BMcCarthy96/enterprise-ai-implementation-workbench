@@ -4,11 +4,23 @@ export interface CompletionRequest {
   system: string;
   user: string;
   maxTokens?: number;
+  structuredOutput?: {
+    name: string;
+    schema: Record<string, unknown>;
+  };
+}
+
+export interface CompletionUsage {
+  inputTokens: number;
+  outputTokens: number;
+  source: "reported" | "estimated";
 }
 
 export interface CompletionResult {
   text: string;
   model: string;
+  usage: CompletionUsage;
+  providerRequestId?: string;
 }
 
 export interface AiProvider {
@@ -27,6 +39,9 @@ export async function aiProvider(): Promise<AiProvider> {
     if (env().AI_PROVIDER === "bedrock") {
       const { BedrockProvider } = await import("./bedrock");
       provider = new BedrockProvider();
+    } else if (env().AI_PROVIDER === "anthropic") {
+      const { AnthropicProvider } = await import("./anthropic");
+      provider = new AnthropicProvider();
     } else {
       const { MockProvider } = await import("./mock");
       provider = new MockProvider();

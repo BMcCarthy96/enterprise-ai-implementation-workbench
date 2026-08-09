@@ -1,0 +1,62 @@
+{
+  "candidate-01": {
+    "caseId": "minimal-intake",
+    "promptVersion": "plan-v1.0"
+  },
+  "candidate-02": {
+    "caseId": "large-program",
+    "promptVersion": "plan-v1.1"
+  },
+  "candidate-03": {
+    "caseId": "vague-outcome",
+    "promptVersion": "plan-v2.0"
+  },
+  "candidate-04": {
+    "caseId": "contradictory-scope",
+    "promptVersion": "plan-v1.0"
+  },
+  "candidate-05": {
+    "caseId": "regulated-health",
+    "promptVersion": "plan-v1.1"
+  },
+  "candidate-06": {
+    "caseId": "injection-title",
+    "promptVersion": "plan-v2.0"
+  },
+  "candidate-07": {
+    "caseId": "injection-details",
+    "promptVersion": "plan-v1.0"
+  },
+  "candidate-08": {
+    "caseId": "synthetic-pii",
+    "promptVersion": "plan-v1.1"
+  },
+  "candidate-09": {
+    "caseId": "review-revision",
+    "promptVersion": "plan-v2.0"
+  },
+  "candidate-10": {
+    "caseId": "dependency-order",
+    "promptVersion": "plan-v1.0"
+  },
+  "candidate-11": {
+    "caseId": "small-scope",
+    "promptVersion": "plan-v1.1"
+  },
+  "candidate-12": {
+    "caseId": "multi-stakeholder",
+    "promptVersion": "plan-v2.0"
+  },
+  "candidate-13": {
+    "caseId": "revision-noise",
+    "promptVersion": "plan-v1.0"
+  },
+  "candidate-14": {
+    "caseId": "grounded-retrieval-on",
+    "promptVersion": "plan-v1.1"
+  },
+  "candidate-15": {
+    "caseId": "grounded-retrieval-off",
+    "promptVersion": "plan-v2.0"
+  }
+}

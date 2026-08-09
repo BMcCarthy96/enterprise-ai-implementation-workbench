@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError, type ZodType } from "zod";
+import { withTenantTransaction } from "@/db";
 import { getSession, type SessionPayload } from "@/lib/auth/session";
 import { can, type Permission } from "@/lib/auth/rbac";
 import { logger } from "@/lib/logger";
@@ -63,7 +64,10 @@ export function withAuth<P = Record<string, never>>(
         );
       }
       const params = route ? await route.params : ({} as P);
-      const res = await handler(req, { session, requestId, log }, params);
+      const res = await withTenantTransaction(session.orgId, () =>
+        handler(req, { session, requestId, log }, params),
+        session.userId,
+      );
       return res;
     } catch (err) {
       if (err instanceof ApiError) {

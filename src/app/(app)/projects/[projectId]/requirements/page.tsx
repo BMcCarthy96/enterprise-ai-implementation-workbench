@@ -1,5 +1,6 @@
 import { desc, eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { redirect } from "next/navigation";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -15,12 +16,18 @@ export default async function RequirementsPage({
 }) {
   const { projectId } = await params;
   const session = (await getSession())!;
+  if (!can(session.role, "internal.view")) redirect(`/projects/${projectId}`);
   const canEdit = can(session.role, "requirements.manage");
 
-  const rows = await db.query.requirements.findMany({
-    where: eq(schema.requirements.projectId, projectId),
-    orderBy: desc(schema.requirements.createdAt),
-  });
+  const rows = await withTenantTransaction(
+    session.orgId,
+    () =>
+      db.query.requirements.findMany({
+        where: eq(schema.requirements.projectId, projectId),
+        orderBy: desc(schema.requirements.createdAt),
+      }),
+    session.userId,
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">

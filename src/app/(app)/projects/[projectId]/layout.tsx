@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ProjectTabs } from "./ProjectTabs";
+import { uuidParam } from "@/server/services/access";
 
 export default async function ProjectLayout({
   children,
@@ -13,26 +14,32 @@ export default async function ProjectLayout({
   children: React.ReactNode;
   params: Promise<{ projectId: string }>;
 }) {
-  const { projectId } = await params;
+  const { projectId: rawProjectId } = await params;
+  const projectId = uuidParam(rawProjectId, "projectId");
   const session = (await getSession())!;
 
-  const row = await db
-    .select({
-      project: schema.projects,
-      customerName: schema.customers.name,
-    })
-    .from(schema.projects)
-    .innerJoin(
-      schema.customers,
-      eq(schema.projects.customerId, schema.customers.id),
-    )
-    .where(
-      and(
-        eq(schema.projects.id, projectId),
-        eq(schema.projects.orgId, session.orgId),
-      ),
-    )
-    .limit(1);
+  const row = await withTenantTransaction(
+    session.orgId,
+    () =>
+      db
+        .select({
+          project: schema.projects,
+          customerName: schema.customers.name,
+        })
+        .from(schema.projects)
+        .innerJoin(
+          schema.customers,
+          eq(schema.projects.customerId, schema.customers.id),
+        )
+        .where(
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.orgId, session.orgId),
+          ),
+        )
+        .limit(1),
+    session.userId,
+  );
   if (row.length === 0) notFound();
   const { project, customerName } = row[0];
 

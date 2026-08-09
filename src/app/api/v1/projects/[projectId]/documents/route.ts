@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { withAuth, parseBody, ApiError } from "@/lib/api";
 import { RegisterDocumentSchema } from "@/lib/apiSchemas";
 import { requireProject } from "@/server/services/access";
-import { recordAudit } from "@/server/services/audit";
+import { completeDocumentUpload } from "@/server/services/documentIngestion";
 
 type Params = { projectId: string };
 
-export const GET = withAuth<Params>(null, async (_req, { session }, params) => {
+export const GET = withAuth<Params>("internal.view", async (_req, { session }, params) => {
   await requireProject(params.projectId, session.orgId);
   const rows = await db.query.documents.findMany({
     where: eq(schema.documents.projectId, params.projectId),
@@ -30,28 +30,21 @@ export const POST = withAuth<Params>(
       throw new ApiError(400, "Document key does not match this project");
     }
 
-    const [document] = await db
-      .insert(schema.documents)
-      .values({
-        orgId: session.orgId,
-        projectId: project.id,
-        fileName: body.fileName,
-        contentType: body.contentType,
-        sizeBytes: body.sizeBytes,
-        s3Key: body.s3Key,
-        uploadedBy: session.userId,
-      })
-      .returning();
-
-    await recordAudit({
+    const pending = await db.query.documents.findFirst({
+      where: and(
+        eq(schema.documents.projectId, project.id),
+        eq(schema.documents.orgId, session.orgId),
+        eq(schema.documents.s3Key, body.s3Key),
+      ),
+    });
+    if (!pending) {
+      throw new ApiError(400, "Upload must begin with a presign request");
+    }
+    const result = await completeDocumentUpload({
+      documentId: pending.id,
       orgId: session.orgId,
       actorId: session.userId,
-      action: "document.uploaded",
-      subjectType: "document",
-      subjectId: document.id,
-      projectId: project.id,
-      metadata: { fileName: document.fileName, sizeBytes: document.sizeBytes },
     });
-    return NextResponse.json({ document }, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
   },
 );

@@ -43,6 +43,17 @@ test.describe("authentication & RBAC", () => {
     // Direct navigation to internal pages/APIs is also denied.
     const res = await page.request.get("/api/v1/audit");
     expect(res.status()).toBe(403);
+    expect((await page.request.get("/api/v1/ai-runs")).status()).toBe(403);
+    const projectsResponse = await page.request.get("/api/v1/projects");
+    const projects = (await projectsResponse.json()) as {
+      projects: Array<{ id: string }>;
+    };
+    const projectId = projects.projects[0].id;
+    expect(
+      (await page.request.get(`/api/v1/projects/${projectId}/documents`)).status(),
+    ).toBe(403);
+    await page.goto(`/projects/${projectId}/board`);
+    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`));
     await page.goto("/insights");
     await expect(page).toHaveURL(/\/dashboard/);
   });

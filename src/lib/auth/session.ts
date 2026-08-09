@@ -20,6 +20,8 @@ export interface SessionPayload {
   orgId: string;
   orgName: string;
   role: Role;
+  demoWorkspaceId?: string;
+  demoExpiresAt?: string;
 }
 
 function secretKey(): Uint8Array {
@@ -28,11 +30,12 @@ function secretKey(): Uint8Array {
 
 export async function createSessionToken(
   payload: SessionPayload,
+  ttlSeconds = SESSION_TTL_SECONDS,
 ): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
+    .setExpirationTime(`${ttlSeconds}s`)
     .sign(secretKey());
 }
 
@@ -54,12 +57,12 @@ export async function getSession(): Promise<SessionPayload | null> {
   return verifySessionToken(token);
 }
 
-export function sessionCookieOptions() {
+export function sessionCookieOptions(maxAge = SESSION_TTL_SECONDS) {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: SESSION_TTL_SECONDS,
+    maxAge,
   };
 }

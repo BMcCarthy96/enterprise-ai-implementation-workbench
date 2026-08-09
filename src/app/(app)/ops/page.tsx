@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
@@ -15,16 +15,21 @@ export default async function OpsPage() {
   if (!can(session.role, "ops.view")) redirect("/dashboard");
   const canRetry = can(session.role, "ops.retry_jobs");
 
-  const jobs = await db
-    .select({
-      job: schema.jobs,
-      projectName: schema.projects.name,
-    })
-    .from(schema.jobs)
-    .leftJoin(schema.projects, eq(schema.jobs.projectId, schema.projects.id))
-    .where(eq(schema.jobs.orgId, session.orgId))
-    .orderBy(desc(schema.jobs.createdAt))
-    .limit(100);
+  const jobs = await withTenantTransaction(
+    session.orgId,
+    () =>
+      db
+        .select({
+          job: schema.jobs,
+          projectName: schema.projects.name,
+        })
+        .from(schema.jobs)
+        .leftJoin(schema.projects, eq(schema.jobs.projectId, schema.projects.id))
+        .where(eq(schema.jobs.orgId, session.orgId))
+        .orderBy(desc(schema.jobs.createdAt))
+        .limit(100),
+    session.userId,
+  );
 
   const total = jobs.length;
   const succeeded = jobs.filter((j) => j.job.status === "succeeded").length;

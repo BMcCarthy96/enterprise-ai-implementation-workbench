@@ -1,0 +1,35 @@
+[
+  {
+    "id": "grounded-retrieval-on",
+    "category": "retrieval-on",
+    "project": {
+      "projectName": "Warehouse Visibility",
+      "projectDescription": "Expose warehouse inventory and shipment state to operations using the supplied implementation brief.",
+      "customerName": "Summit Outdoor Supply",
+      "customerIndustry": "Retail",
+      "targetDate": "2027-01-15",
+      "requirements": [
+        { "id": "20000000-0000-4000-8000-000000000001", "title": "Inventory sync", "details": "Synchronize available inventory on a schedule.", "priority": "critical" },
+        { "id": "20000000-0000-4000-8000-000000000002", "title": "Operations alerts", "details": "Alert operators when inventory becomes stale.", "priority": "high" }
+      ],
+      "sources": [
+        { "ref": "S1", "documentName": "warehouse-brief.md", "pageNumber": null, "heading": "Source systems", "content": "The ERP is authoritative for available inventory. Alert operators when a scheduled sync is stale." }
+      ]
+    }
+  },
+  {
+    "id": "grounded-retrieval-off",
+    "category": "retrieval-off",
+    "project": {
+      "projectName": "Warehouse Visibility",
+      "projectDescription": "Expose warehouse inventory and shipment state to operations without an attached source brief.",
+      "customerName": "Summit Outdoor Supply",
+      "customerIndustry": "Retail",
+      "targetDate": "2027-01-15",
+      "requirements": [
+        { "id": "20000000-0000-4000-8000-000000000001", "title": "Inventory sync", "details": "Synchronize available inventory on a schedule.", "priority": "critical" },
+        { "id": "20000000-0000-4000-8000-000000000002", "title": "Operations alerts", "details": "Alert operators when inventory becomes stale.", "priority": "high" }
+      ]
+    }
+  }
+]

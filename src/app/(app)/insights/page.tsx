@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { withTenantTransaction } from "@/db";
+import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { getInsights } from "@/server/services/insights";
@@ -66,7 +68,11 @@ export default async function InsightsPage() {
   // Org-wide analytics: admins and implementation managers only.
   if (!can(session.role, "audit.view")) redirect("/dashboard");
 
-  const i = await getInsights(session.orgId);
+  const i = await withTenantTransaction(
+    session.orgId,
+    () => getInsights(session.orgId),
+    session.userId,
+  );
 
   const pctTone = (v: number | null) =>
     v == null ? "text-gray-900" : v >= 80 ? "text-emerald-600" : v >= 50 ? "text-amber-600" : "text-red-600";
@@ -76,6 +82,7 @@ export default async function InsightsPage() {
       <PageHeader
         title="Insights"
         subtitle="AI output quality and delivery health across your organization"
+        actions={<Link href="/ai-runs" className="btn-secondary">Inspect AI runs</Link>}
       />
 
       {/* AI quality — the eval story */}
@@ -117,6 +124,13 @@ export default async function InsightsPage() {
           }
           hint="worker job duration"
         />
+      </div>
+      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <Stat label="AI plan runs" value={`${i.aiQuality.runCount}`} hint={`${i.aiQuality.succeeded} succeeded`} />
+        <Stat label="Cost per plan" value={i.aiQuality.costPerPlanUsd == null ? "—" : `$${i.aiQuality.costPerPlanUsd.toFixed(4)}`} hint="versioned pricing catalog" />
+        <Stat label="P50 / P95 latency" value={i.aiQuality.p50LatencyMs == null ? "—" : `${(i.aiQuality.p50LatencyMs / 1000).toFixed(1)}s / ${(i.aiQuality.p95LatencyMs ?? 0) / 1000}s`} hint="provider + retrieval trace" />
+        <Stat label="First-pass valid" value={i.aiQuality.firstAttemptValidityRate == null ? "—" : `${i.aiQuality.firstAttemptValidityRate}%`} hint={`${i.aiQuality.repairRescueRate ?? 0}% repair rescue`} tone={pctTone(i.aiQuality.firstAttemptValidityRate)} />
+        <Stat label="Guardrail failures" value={`${i.aiQuality.guardrailFailures}`} hint="invalid / blocked calls" tone={i.aiQuality.guardrailFailures ? "text-amber-600" : "text-emerald-600"} />
       </div>
 
       <div className="mb-8 grid gap-4 lg:grid-cols-2">
