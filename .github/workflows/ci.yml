@@ -33,6 +33,11 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - run: npm run eval:offline
+      - run: npm run eval:check
+      - run: npm --prefix infra install --no-audit --no-fund
+      - run: npm --prefix infra run build
+      - run: npm run infra:synth
       - run: npm run build
 
   e2e:
@@ -40,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: workbench
           POSTGRES_PASSWORD: workbench

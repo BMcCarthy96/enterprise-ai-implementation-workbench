@@ -144,8 +144,7 @@ export async function getProjectTimeline(
   projectId: string,
   project: { createdAt: Date; targetDate: Date | null },
 ): Promise<ProjectTimeline> {
-  const [milestones, tasks, updates] = await Promise.all([
-    db
+  const milestones = await db
       .select({
         id: schema.milestones.id,
         name: schema.milestones.name,
@@ -155,15 +154,15 @@ export async function getProjectTimeline(
       })
       .from(schema.milestones)
       .where(eq(schema.milestones.projectId, projectId))
-      .orderBy(asc(schema.milestones.sortOrder)),
-    db
+      .orderBy(asc(schema.milestones.sortOrder));
+  const tasks = await db
       .select({
         milestoneId: schema.tasks.milestoneId,
         status: schema.tasks.status,
       })
       .from(schema.tasks)
-      .where(eq(schema.tasks.projectId, projectId)),
-    db
+      .where(eq(schema.tasks.projectId, projectId));
+  const updates = await db
       .select({
         id: schema.customerUpdates.id,
         title: schema.customerUpdates.title,
@@ -172,8 +171,7 @@ export async function getProjectTimeline(
         publishedAt: schema.customerUpdates.publishedAt,
       })
       .from(schema.customerUpdates)
-      .where(eq(schema.customerUpdates.projectId, projectId)),
-  ]);
+      .where(eq(schema.customerUpdates.projectId, projectId));
 
   return buildProjectTimeline({
     startedAt: project.createdAt,

@@ -8,7 +8,14 @@ import {
   type DigestPromptInput,
 } from "@/lib/ai/prompts";
 import { extractJson } from "./planGeneration";
+import { redactSensitiveText, totalRedactions } from "@/lib/ai/redaction";
 import { recordAudit } from "./audit";
+import {
+  finishAiRun,
+  finishAiRunAfterCommit,
+  instrumentAiCall,
+  startAiRun,
+} from "./aiTelemetry";
 
 const DigestOutputSchema = z.object({
   title: z.string().min(3).max(200),
@@ -78,37 +85,70 @@ export async function runDigestJob(job: {
   };
 
   const provider = await aiProvider();
-  const res = await provider.complete({
-    system: DIGEST_SYSTEM_PROMPT,
-    user: buildDigestUserPrompt(input),
+  const run = await startAiRun({
+    orgId: job.orgId,
+    projectId: project.id,
+    jobId: job.id,
+    artifactType: "customer_update",
+    provider: provider.name,
+    promptVersion: "digest-v1.0",
   });
-  const output = DigestOutputSchema.parse(JSON.parse(extractJson(res.text)));
+  try {
+    const promptRedaction = redactSensitiveText(buildDigestUserPrompt(input));
+    const res = await instrumentAiCall({
+      aiRunId: run.id,
+      orgId: job.orgId,
+      sequence: 1,
+      operation: "generate",
+      provider: provider.name,
+      promptVersion: "digest-v1.0",
+      redactionCount: totalRedactions(promptRedaction.counts),
+      complete: () =>
+        provider.complete({
+          system: DIGEST_SYSTEM_PROMPT,
+          user: promptRedaction.text,
+        }),
+      validate: (result) => {
+        try {
+          DigestOutputSchema.parse(JSON.parse(extractJson(result.text)));
+          return "valid";
+        } catch {
+          return "invalid";
+        }
+      },
+    });
+    const output = DigestOutputSchema.parse(JSON.parse(extractJson(res.text)));
 
-  const [update] = await db
-    .insert(schema.customerUpdates)
-    .values({
+    const [update] = await db
+      .insert(schema.customerUpdates)
+      .values({
+        orgId: job.orgId,
+        projectId: project.id,
+        title: output.title,
+        body: output.body,
+        status: "pending_approval",
+        generatedByJobId: job.id,
+      })
+      .returning({ id: schema.customerUpdates.id });
+
+    await db.insert(schema.approvals).values({
       orgId: job.orgId,
       projectId: project.id,
-      title: output.title,
-      body: output.body,
-      status: "pending_approval",
-      generatedByJobId: job.id,
-    })
-    .returning({ id: schema.customerUpdates.id });
+      subjectType: "customer_update",
+      subjectId: update.id,
+    });
 
-  await db.insert(schema.approvals).values({
-    orgId: job.orgId,
-    projectId: project.id,
-    subjectType: "customer_update",
-    subjectId: update.id,
-  });
-
-  await recordAudit({
-    orgId: job.orgId,
-    action: "customer_update.generated",
-    subjectType: "customer_update",
-    subjectId: update.id,
-    projectId: project.id,
-    metadata: { model: res.model, periodDays: PERIOD_DAYS },
-  });
+    await recordAudit({
+      orgId: job.orgId,
+      action: "customer_update.generated",
+      subjectType: "customer_update",
+      subjectId: update.id,
+      projectId: project.id,
+      metadata: { model: res.model, periodDays: PERIOD_DAYS },
+    });
+    await finishAiRunAfterCommit({ aiRunId: run.id, outcome: "succeeded" });
+  } catch (error) {
+    await finishAiRun({ aiRunId: run.id, outcome: "failed" });
+    throw error;
+  }
 }

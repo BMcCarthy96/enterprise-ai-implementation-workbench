@@ -4,7 +4,7 @@
 
 A multi-tenant internal platform for software implementation teams: it turns messy customer requirements into AI-drafted implementation plans, routes every AI output through **human approval**, materializes approved plans into milestone/task delivery boards, and keeps a complete audit trail — on an **AWS-native backbone** (PostgreSQL, S3, SQS, Bedrock) that runs 100% locally via Docker + LocalStack with zero cloud cost.
 
-> **TL;DR demo flow:** capture requirements → queue an AI scoping job (SQS → worker → Bedrock/Claude) → schema-validated plan lands in the approval queue → an implementation manager approves it → milestones & tasks appear on the delivery board → an AI-drafted customer status update goes through the same approval gate before the customer role can see it → everything is in the audit log.
+> **TL;DR demo flow:** capture requirements → ground an AI scoping job with tenant-filtered document chunks → trace generation, validation, repair, cost, and citations → route the plan to a human approval queue → materialize approved milestones/tasks → keep every decision in the audit log.
 
 ## Who this is for
 
@@ -34,18 +34,21 @@ A multi-tenant internal platform for software implementation teams: it turns mes
 - Approved plans materialize into **milestones and tasks** in one transaction
 - Kanban-style board with status transitions, assignees, and priorities
 - Document uploads straight to **S3 via presigned URLs**, with org/project-namespaced keys
+- PDF, DOCX, TXT, and Markdown ingestion with idempotent chunking, pgvector HNSW retrieval, PII redaction, and validated `S1…S8` citations
 
 **Visibility & reporting**
 - [**SLA & delivery risk**](#sla--delivery-risk) on the dashboard — at-risk/breached projects with the signal that tripped, plus **per-project threshold overrides**
 - [**Insights & evals**](#insights--evals) — approval rate, generation success rate, latency, rejection-reason breakdown, and quality grouped by prompt version
+- **AI Runs** — sanitized, clickable timelines for retrieval, generation, repair, guardrails, tokens, pricing, latency, and normalized citations
 - [**Customer-facing timeline**](#customer-facing-status-timeline) — external progress view built from an allowlist of customer-safe sources, so internal review history can't leak
 - [**Global search**](#global-search) — ⌘K palette over projects, requirements, and customers, role-gated server-side
 - **Append-only audit log** of every mutation, filterable in-app and exportable as CSV
 
 **Platform**
-- **Multi-tenant** by construction: every session carries an `orgId` and every resource lookup is org-scoped, so a guessed UUID from another tenant 404s
+- **Multi-tenant** by construction: every session carries an `orgId`, every lookup is org-scoped, and PostgreSQL RLS repeats that guarantee inside a transaction-local `app.org_id`
 - **RBAC** across four roles, enforced on API routes, server components, and navigation alike
 - [**Reliability**](#reliability--operability): exponential-backoff retries, dead-letter parking with one-click retry, atomic job claiming, structured logs, health probe
+- **Guarded public demo** — an ephemeral synthetic workspace with TTL, quotas, spend circuit breakers, and no shared credentials
 - [**OpenAPI 3.1 docs**](#api) generated from the same zod schemas the handlers validate with — they cannot drift from behavior
 - Runs **100% locally** on Docker + LocalStack; the switch to real AWS is env vars, not code
 
@@ -62,10 +65,10 @@ flowchart LR
       SC[Server Components<br/>org-scoped queries]
     end
     subgraph "AWS (LocalStack locally)"
-      PG[(PostgreSQL<br/>RDS)]
+      PG[(PostgreSQL + pgvector<br/>Neon)]
       S3[(S3<br/>documents)]
       SQS[[SQS<br/>jobs queue + DLQ]]
-      BR[Bedrock<br/>Claude]
+      BR[Bedrock<br/>Claude + Titan]
     end
     W[Worker process<br/>long-poll + retries]
 
@@ -82,13 +85,13 @@ flowchart LR
 
 **Key decisions (and why):**
 
-- **DB row = source of truth for jobs; SQS message = delivery only.** Messages carry just a `jobId`. Duplicate delivery (SQS is at-least-once) is harmless because the worker claims jobs with an atomic `queued → running` transition. All observability lives in Postgres, surfaced on the Ops page.
+- **DB row = source of truth for jobs; SQS message = delivery only.** Messages carry just a `jobId`. Publication runs only after the job transaction commits; `dispatched_at` plus a scheduled reconciler repairs transient publish failures. Duplicate delivery (SQS is at-least-once) is harmless because the worker claims jobs with an atomic `queued → running` transition. All observability lives in Postgres, surfaced on the Ops page.
 - **AI output never acts on its own.** Plan generation stores a `pending_approval` plan and opens an approval. Only a human decision materializes milestones/tasks. Customer updates follow the same gate — nothing reaches the customer role without sign-off.
 - **Bulk review without hiding failures.** A reviewer can apply one decision across a selection (`POST /api/v1/approvals/bulk`). Each item stays an independent audited transaction, so a stale selection — someone else already decided one — yields a *partial success* report (`succeeded[]` / `failed[]` / summary) instead of rolling back the reviewer's other valid decisions. Fan-out is capped at 50 ids per request since each rejection can queue a regeneration.
 - **Closed feedback loop.** When a plan is rejected, the reviewer's reason code + note are captured and — with one checkbox, on by default — a revised generation is queued automatically, carrying that feedback into the next prompt; the resulting version records what feedback it addressed. A per-version diff (milestones added/removed, task/risk deltas) makes re-approval fast. This is the loop the Insights dashboard then measures.
 - **Model output is validated, not trusted.** Responses must parse as JSON and pass a zod schema (`PlanContentSchema`); one repair attempt feeds validation errors back to the model; a second failure fails the job into the retry/backoff path (5s → 10s → 20s… capped) and eventually a dead-letter state with a manual retry button.
 - **Prompt-injection hygiene.** User-authored text (requirement notes, etc.) is embedded as JSON inside an `<input_json>` envelope the model is told to treat as data; the envelope extraction is robust to close-tag smuggling (covered by a unit test that caught a real bug during development).
-- **The local/cloud switch is one env var.** All AWS SDK v3 clients read `AWS_ENDPOINT_URL`; set it to LocalStack for development, drop it in production and the SDK resolves real endpoints + IAM credentials. `AI_PROVIDER=mock|bedrock` swaps a deterministic offline provider for Claude on Bedrock.
+- **The local/cloud switch is configuration-only.** All AWS SDK v3 clients read `AWS_ENDPOINT_URL`; set it to LocalStack for development, drop it in production and the SDK resolves real endpoints + IAM credentials. `AI_PROVIDER=mock|bedrock|anthropic` selects the deterministic offline provider, Claude on Bedrock, or the direct Anthropic adapter.
 - **Tenant isolation is enforced in one place.** Every session carries an `orgId`; every project-owned resource lookup goes through `requireProject`/`requireTask`/… helpers that scope by org, so a guessed UUID from another tenant 404s. S3 keys are namespaced `orgs/{orgId}/projects/{projectId}/…` and registration validates the prefix.
 
 ## Data model
@@ -110,7 +113,7 @@ erDiagram
     organizations ||--o{ jobs : runs
 ```
 
-14 tables, all tenant-scoped by `org_id`. `audit_events` is append-only; `plans` are versioned (approve v2 → v1 becomes `superseded`).
+19 tables, with tenant-owned delivery, AI observability, retrieval, citations, and ephemeral demo workspace data. `audit_events` is append-only; `plans` are versioned (approve v2 → v1 becomes `superseded`).
 
 ## The approval workflow (sequence)
 
@@ -145,12 +148,16 @@ Prereqs: Node 20+, Docker Desktop.
 
 ```bash
 cp .env.example .env          # defaults target local Docker/LocalStack
-docker compose up -d          # Postgres :5433 + LocalStack :4566 (S3, SQS + DLQ auto-provisioned)
+docker compose up -d          # pgvector Postgres :5433 + LocalStack :4566 (S3, SQS + DLQ auto-provisioned)
 npm install
 npm run db:migrate            # apply Drizzle migrations
 npm run db:seed               # two demo tenants with realistic history
 npm run dev                   # app on http://localhost:3000
 npm run worker                # background job worker (second terminal)
+npm run eval:offline          # deterministic 15-case quality gate (including retrieval on/off)
+npm run infra:install && npm run infra:synth  # CDK template validation
+npm run capture:evidence                     # deterministic 1440×900 screenshots
+npm run capture:video                        # repeatable silent recruiter walkthrough (WebM)
 ```
 
 Sign in with any demo account (password `demo1234`):
@@ -178,7 +185,7 @@ Auth is a `workbench_session` httpOnly cookie (HS256 JWT, 12h). Async operations
 ## Testing & CI
 
 ```bash
-npm test          # 96 unit tests: RBAC, plan schema, prompt envelope, backoff, sessions, mock provider, insights aggregations, plan diff, search gating, regeneration guard, SLA risk scoring + policy resolution, bulk-decision summaries, customer-timeline assembly
+npm test          # tenant access, plan schema/guardrails, prompt envelope, backoff, sessions, provider adapters, retrieval/redaction, insights, calibration, and workflow helpers
 npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff + auto-regenerate, bulk approvals, customer timeline leak check, SLA risk + per-project overrides, insights, global search, health, CSV export, OpenAPI contract
 E2E_WORKER=1 npx playwright test  # + full async generate→approve→board flow (needs worker running)
 ```
@@ -193,6 +200,20 @@ An **Insights** dashboard (`/insights`, admin + manager only) turns the audit an
 - **Rejection-reason breakdown:** the reviewer reason codes captured on every rejection — the signal that drives prompt iteration
 - **Quality by prompt version:** approval outcomes grouped by the `promptVersion` stamped on each plan, so output drift is attributable as prompts evolve
 - **Delivery health:** projects by stage, tasks by status, requirements/plans/updates volume
+
+The **AI Runs** surface (`/ai-runs`) is the inspectable evidence layer: each plan or digest trace lists retrieval embeddings, initial generation, validation/repair outcomes, token usage source (`reported` vs `estimated`), versioned pricing, latency, and normalized citations. It intentionally does not persist raw production prompts or document chunks.
+
+The offline eval lane covers 15 synthetic cases across three prompt variants, including paired retrieval-on/retrieval-off fixtures, and writes a committed baseline to `evals/baseline.json`:
+
+```bash
+npm run eval:offline   # deterministic fixture suite
+npm run eval:smoke     # four-case development smoke lane
+npm run eval:check     # hard regression gate against the baseline
+npm run eval:live      # full provider matrix when AI_PROVIDER=bedrock|anthropic
+npm run eval:calibration:generate  # 15 blinded candidates for human scoring
+npm run eval:calibration:judge     # optional live LLM judge scores (after setting AI_PROVIDER)
+npm run eval:calibration:report    # Spearman/MAE eligibility report
+```
 
 The aggregation math lives in pure, unit-tested functions in [`src/server/services/insights.ts`](src/server/services/insights.ts) — verifiable without a database.
 
@@ -221,6 +242,7 @@ Risk is **derived on read**, not stored — no extra tables, no drift. The scori
 - Exponential backoff retries with SQS delayed delivery; attempts tracked per job
 - Dead-letter parking after `maxAttempts`, surfaced in the UI with one-click manual retry (audited)
 - Atomic job claiming → duplicate SQS deliveries are no-ops
+- Post-commit SQS dispatch + durable reconciliation → a transient publish failure cannot strand a queued job
 - Structured pino logs with request IDs on every API call and job attempt
 - Uniform JSON error envelope (`{ error, requestId }`) with zod issue details on 400s
 - Seeded failure state (a throttled dead-letter job) so the ops story is visible in the demo
@@ -229,7 +251,7 @@ Risk is **derived on read**, not stored — no extra tables, no drift. The scori
 
 ## Deploying to real AWS
 
-See [docs/aws-deployment.md](docs/aws-deployment.md) for the full path: RDS + S3 + SQS + Bedrock model access + App Runner/ECS, IAM policies, and what changes (spoiler: env vars, not code).
+See [docs/aws-deployment.md](docs/aws-deployment.md) for the full path: Neon/pgvector + S3 + SQS + Bedrock + Lambda/CDK, OIDC, budgets, and guided setup. See [docs/security.md](docs/security.md) for trust boundaries, RLS, redaction, and explicit non-goals.
 
 ## Repo tour
 
@@ -237,13 +259,14 @@ See [docs/aws-deployment.md](docs/aws-deployment.md) for the full path: RDS + S3
 src/
   app/               # Next.js App Router: (app) authenticated shell + /api routes
   components/        # shared UI primitives
-  db/                # Drizzle schema + client (14 tables)
+  db/                # Drizzle schema + client (19 tables + pgvector)
   lib/
     ai/              # provider abstraction: bedrock.ts, mock.ts, prompts, plan schema
     auth/            # sessions (jose), passwords (bcrypt), RBAC matrix
     aws/             # SDK v3 clients, S3 presign helpers, SQS helpers
   server/services/   # org-scoped business logic + audit writer
-  worker/            # SQS-polling job worker (retries, DLQ)
+  worker/            # SQS-polling worker, Lambda adapter, and demo cleanup
+infra/              # AWS CDK stack: S3, SQS/DLQ, Lambda, alarms, budget
 scripts/             # seed script, LocalStack init
 tests/               # unit (Vitest) + e2e (Playwright)
 docs/                # architecture, AWS deployment, case study

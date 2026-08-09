@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction, withUserTransaction } from "@/db";
 import { verifyPassword } from "@/lib/auth/password";
 import {
   createSessionToken,
@@ -15,6 +15,11 @@ const LoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
+
+// A fixed bcrypt hash keeps unknown-email and wrong-password requests on the
+// same expensive code path, reducing credential-enumeration timing signals.
+const DUMMY_PASSWORD_HASH =
+  "$2b$12$50t6qVJIbPO2W9pU9MmLJem0HML00HEZuplazgT.qyHbK/dzI4Vea";
 
 export async function POST(req: NextRequest) {
   let body: unknown;
@@ -31,9 +36,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { email, password } = parsed.data;
+  const email = parsed.data.email.toLowerCase();
+  const { password } = parsed.data;
   const user = await db.query.users.findFirst({
-    where: eq(schema.users.email, email.toLowerCase()),
+    where: eq(schema.users.email, email),
   });
 
   // Uniform error for unknown email vs wrong password.
@@ -41,25 +47,30 @@ export async function POST(req: NextRequest) {
     { error: "Invalid email or password" },
     { status: 401 },
   );
-  if (!user) return invalid;
-  if (!(await verifyPassword(password, user.passwordHash))) {
-    logger.warn({ email }, "failed login attempt");
+  const passwordValid = await verifyPassword(
+    password,
+    user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+  );
+  if (!user || !passwordValid) {
+    logger.warn({ reason: "invalid_credentials" }, "failed login attempt");
     return invalid;
   }
 
-  const membership = await db
-    .select({
-      orgId: schema.memberships.orgId,
-      role: schema.memberships.role,
-      orgName: schema.organizations.name,
-    })
-    .from(schema.memberships)
-    .innerJoin(
-      schema.organizations,
-      eq(schema.memberships.orgId, schema.organizations.id),
-    )
-    .where(eq(schema.memberships.userId, user.id))
-    .limit(1);
+  const membership = await withUserTransaction(user.id, () =>
+    db
+      .select({
+        orgId: schema.memberships.orgId,
+        role: schema.memberships.role,
+        orgName: schema.organizations.name,
+      })
+      .from(schema.memberships)
+      .innerJoin(
+        schema.organizations,
+        eq(schema.memberships.orgId, schema.organizations.id),
+      )
+      .where(eq(schema.memberships.userId, user.id))
+      .limit(1),
+  );
 
   if (membership.length === 0) {
     return NextResponse.json(
@@ -78,13 +89,16 @@ export async function POST(req: NextRequest) {
     role,
   });
 
-  await recordAudit({
-    orgId,
-    actorId: user.id,
-    action: "auth.login",
-    subjectType: "user",
-    subjectId: user.id,
-  });
+  await withTenantTransaction(orgId, () =>
+    recordAudit({
+      orgId,
+      actorId: user.id,
+      action: "auth.login",
+      subjectType: "user",
+      subjectId: user.id,
+    }),
+    user.id,
+  );
 
   const res = NextResponse.json({
     user: { id: user.id, email: user.email, name: user.name, role, orgName },

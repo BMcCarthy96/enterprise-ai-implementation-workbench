@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can, ROLE_LABELS, type Role } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
@@ -22,16 +22,21 @@ export default async function MembersPage() {
   const session = (await getSession())!;
   if (!can(session.role, "org.manage_members")) redirect("/dashboard");
 
-  const members = await db
-    .select({
-      membership: schema.memberships,
-      userName: schema.users.name,
-      userEmail: schema.users.email,
-    })
-    .from(schema.memberships)
-    .innerJoin(schema.users, eq(schema.memberships.userId, schema.users.id))
-    .where(eq(schema.memberships.orgId, session.orgId))
-    .orderBy(asc(schema.memberships.createdAt));
+  const members = await withTenantTransaction(
+    session.orgId,
+    () =>
+      db
+        .select({
+          membership: schema.memberships,
+          userName: schema.users.name,
+          userEmail: schema.users.email,
+        })
+        .from(schema.memberships)
+        .innerJoin(schema.users, eq(schema.memberships.userId, schema.users.id))
+        .where(eq(schema.memberships.orgId, session.orgId))
+        .orderBy(asc(schema.memberships.createdAt)),
+    session.userId,
+  );
 
   return (
     <div>

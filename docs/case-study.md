@@ -1,45 +1,44 @@
 # Case study: Enterprise AI Implementation Workbench
 
-Portfolio narrative — the story to tell on a case-study page, in a Loom, and in interviews. (Structure follows: context → constraints → architecture → hardest tradeoff → failure handling → what changed → what's next.)
+Portfolio narrative — the story to tell in a case-study page, a Loom, and an interview.
 
 ## Context
 
-Implementation teams (agencies, onboarding teams, solutions orgs) run the same loop for every customer: collect messy requirements from calls and email threads, turn them into a scoped plan, get it blessed, track delivery, and keep the customer informed. Each step is manual, slow, and inconsistent — and the "AI fix" most teams try (paste notes into a chatbot) produces plans nobody can trust or track.
+Implementation teams repeatedly collect messy customer requirements, turn them into a scoped delivery plan, get that plan blessed, track execution, and keep stakeholders informed. A chatbot can draft prose quickly, but it cannot make the output trustworthy, auditable, or safe to execute.
 
-The Workbench is the internal platform version of that loop: intake is structured, scoping is AI-drafted but human-approved, delivery is tracked against the approved plan, and customer communication is generated from real delivery state — with an audit trail across all of it.
+The Workbench is the internal platform version of that loop: intake is structured, AI scoping is grounded and human-approved, delivery is materialized only after approval, and customer communication is generated from real delivery state.
 
 ## Users and stakes
 
-Four personas with genuinely different needs: the **admin** needs control and visibility, the **manager** is accountable for what ships and what the customer reads, the **engineer** needs speed without approval authority, and the **customer** needs status without internal noise. RBAC isn't a feature checkbox here — the entire workflow is the permission model (the person who generates a plan cannot be the person who approves it).
-
-## Why AI was appropriate — and where it wasn't
-
-AI is good at exactly one step of this loop: transforming unstructured requirements into a structured draft plan, and summarizing activity into prose. Everything else — what happens when a plan is approved, who may decide, how retries work, what the customer sees — is deterministic code. Drawing that line early simplified the whole system: model calls are free to fail or be re-run because they never mutate delivery state; only the (idempotent-guarded) human approval transaction does.
+Four personas have different powers: the admin owns the organization, the implementation manager approves what ships, the solutions engineer drafts and executes but cannot approve their own AI output, and the customer sees only an explicit allowlist of published progress. RBAC is the workflow, not a checkbox.
 
 ## Architecture in one breath
 
-Next.js app + REST API over Postgres, with S3 for documents, SQS for async jobs, and Bedrock (Claude) for generation; a separate worker long-polls the queue, validates model output against a zod schema with one repair retry, and everything runs locally against LocalStack with a deterministic mock provider — so the demo needs zero cloud credentials and the AWS deployment is an env-var change.
+Next.js + REST over PostgreSQL/pgvector, private S3, SQS + DLQ, Bedrock Claude/Titan adapters, and a shared worker path that runs locally or behind an SQS-triggered Lambda. Retrieval is tenant- and project-filtered, source refs are persisted with plans, and AI Runs expose sanitized call traces without storing raw prompts. CDK captures the AWS shape; the deterministic mock keeps the full workflow runnable with zero cloud credentials.
 
 ## Hardest tradeoff
 
-**Where to enforce trust in model output.** Three candidate layers: prompt (ask nicely), schema (validate), or human (review). The answer was all three with different jobs: the prompt constrains format *cheaply*, the zod schema makes malformed output *impossible to persist* (with one repair round-trip feeding errors back), and the human gate makes even valid output *inert until approved*. The insight worth defending in interviews: schema validation is not a substitute for human review — it verifies *shape*, while the manager verifies *judgment* (sequencing, scope, tone).
+Trust is enforced in layers with different jobs: the prompt constrains format and treats input as data; Zod rejects malformed structure; requirement/citation guardrails reject fabricated references and injection echoes; redaction limits unnecessary identifiers; and the human gate makes even valid output inert until approved. Schema validation verifies shape and provenance; the manager still verifies judgment, scope, sequencing, and tone.
 
 ## Designing for failure
 
-- At-least-once SQS delivery handled with atomic DB job claims (duplicates no-op).
-- Exponential backoff (5s→10s→20s, capped) with attempts persisted; exhausted jobs park as dead-letter with a manual, audited retry button.
-- The seed data ships a throttled dead-letter job on purpose, so the failure story is demoable, not hypothetical.
-- A unit test simulating prompt-envelope smuggling (`</input_json>` inside user text) caught a real extraction bug during development; the fix and the test shipped together.
+- At-least-once SQS delivery is handled with atomic database claims; duplicate messages are expected and harmless.
+- Application failures use persisted exponential backoff and dead-letter parking; infrastructure-level Lambda failures use partial-batch responses.
+- A model response gets at most one repair call. If the repaired output still fails schema or guardrails, no plan is persisted.
+- Document ingestion is idempotent: content hashes replace chunks safely, unsupported or malformed files become visible failed states, and embedding calls are traceable without storing source text in telemetry.
+- The public demo reserves quota and estimated spend before a model call; exhausted limits return a typed response without starting generation.
 
-## Measurable framing
+## Measured evidence
 
-- Plan drafting: ~hours of manual scoping → a reviewed draft in under a minute of wall-clock (one job round-trip).
-- Every generated plan carries `model` + `promptVersion`, so approval/rejection rates per prompt version are queryable from day one — the eval loop is built into the data model.
-- Approval turnaround, retry counts, job durations, and rejection reason codes are all first-class columns, not log archaeology.
+- The committed offline fixture suite covers 15 synthetic cases × 3 prompt variants, including retrieval-on/retrieval-off pairs: 100% schema validity, requirement coverage, and citation/injection gates, with a hard regression check.
+- Every generated plan carries `model` and `promptVersion`; every AI run carries provider/model, usage source, versioned pricing, latency, repair outcome, and sanitized error classification.
+- The AI Runs surface makes retrieval, generation, repair, guardrails, and citations inspectable. Raw production prompts and document chunks are intentionally excluded.
+- The optional LLM judge emits a schema-validated five-point score for clarity, actionability, business tone, and scope discipline; calibration keeps it advisory unless the 15-output Spearman/MAE thresholds are met.
+- The seed data includes a rejected plan, a repaired approved plan, a pending approval queue, a grounded source document, a dead-letter job, and a second tenant for isolation checks.
 
-## What I'd build next
+## What I would do next
 
-1. Postgres RLS as a second tenancy enforcement layer.
-2. Structured plan-version diffs to speed re-approval.
-3. Rejection-reason analytics per prompt version (the closing of the quality loop).
-4. SSE for job status instead of polling.
+1. Complete the guided Neon/AWS account setup and deploy the synthesized CDK stack with Vercel OIDC.
+2. Run the 15-output human calibration and enable an LLM judge only if the correlation and MAE thresholds are met.
+3. Run retrieval-on/retrieval-off live comparisons and a production smoke test against the Lambda path.
+4. Keep OCR, real customer data, enterprise SSO, and statistically conclusive experimentation explicitly out of scope until the evidence supports them.

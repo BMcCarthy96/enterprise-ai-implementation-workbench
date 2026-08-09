@@ -1,0 +1,19 @@
+{
+  "name": "enterprise-ai-implementation-workbench-infra",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "synth": "cdk synth"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.240.0",
+    "constructs": "^10.4.2"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.240.0",
+    "@types/node": "^22",
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
+  }
+}

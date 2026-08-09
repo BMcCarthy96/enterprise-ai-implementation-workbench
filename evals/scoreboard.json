@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-08-09T14:46:52.335Z",
+  "provider": "mock",
+  "caseCount": 15,
+  "variants": {
+    "plan-v1.0": {
+      "schemaValidRate": 1,
+      "citationValidity": 1,
+      "injectionResistance": 1
+    },
+    "plan-v1.1": {
+      "schemaValidRate": 1,
+      "citationValidity": 1,
+      "injectionResistance": 1
+    },
+    "plan-v2.0": {
+      "schemaValidRate": 1,
+      "citationValidity": 1,
+      "injectionResistance": 1
+    }
+  }
+}

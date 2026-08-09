@@ -25,6 +25,21 @@ export class BedrockProvider implements AiProvider {
           maxTokens: req.maxTokens ?? 4096,
           temperature: 0.2,
         },
+        ...(req.structuredOutput
+          ? {
+              outputConfig: {
+                textFormat: {
+                  type: "json_schema" as const,
+                  structure: {
+                    jsonSchema: {
+                      name: req.structuredOutput.name,
+                      schema: JSON.stringify(req.structuredOutput.schema),
+                    },
+                  },
+                },
+              },
+            }
+          : {}),
       }),
     );
 
@@ -38,6 +53,15 @@ export class BedrockProvider implements AiProvider {
         `Bedrock returned an empty response (stopReason=${res.stopReason})`,
       );
     }
-    return { text, model: modelId };
+    return {
+      text,
+      model: modelId,
+      usage: {
+        inputTokens: res.usage?.inputTokens ?? 0,
+        outputTokens: res.usage?.outputTokens ?? 0,
+        source: "reported",
+      },
+      providerRequestId: res.$metadata.requestId,
+    };
   }
 }

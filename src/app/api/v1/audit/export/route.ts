@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { withAuth } from "@/lib/api";
+import { uuidParam } from "@/server/services/access";
 
 /** RFC-4180 field escaping. */
 function csvCell(value: unknown): string {
@@ -13,7 +14,8 @@ function csvCell(value: unknown): string {
  * Same permission and org scoping as the audit page.
  */
 export const GET = withAuth("audit.view", async (req, { session }) => {
-  const projectId = req.nextUrl.searchParams.get("projectId");
+  const rawProjectId = req.nextUrl.searchParams.get("projectId");
+  const projectId = rawProjectId ? uuidParam(rawProjectId, "projectId") : null;
 
   const rows = await db
     .select({

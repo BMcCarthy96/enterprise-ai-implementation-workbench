@@ -1,5 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -16,21 +16,29 @@ export default async function ProjectOverviewPage({
   const { projectId } = await params;
   const session = (await getSession())!;
 
-  const project = await db.query.projects.findFirst({
-    where: and(
-      eq(schema.projects.id, projectId),
-      eq(schema.projects.orgId, session.orgId),
-    ),
-  });
-  if (!project) return null;
-
-  const milestones = await db.query.milestones.findMany({
-    where: eq(schema.milestones.projectId, projectId),
-    orderBy: asc(schema.milestones.sortOrder),
-  });
-  const tasks = await db.query.tasks.findMany({
-    where: eq(schema.tasks.projectId, projectId),
-  });
+  const data = await withTenantTransaction(
+    session.orgId,
+    async () => {
+      const project = await db.query.projects.findFirst({
+        where: and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.orgId, session.orgId),
+        ),
+      });
+      if (!project) return null;
+      const milestones = await db.query.milestones.findMany({
+        where: eq(schema.milestones.projectId, projectId),
+        orderBy: asc(schema.milestones.sortOrder),
+      });
+      const tasks = await db.query.tasks.findMany({
+        where: eq(schema.tasks.projectId, projectId),
+      });
+      return { project, milestones, tasks };
+    },
+    session.userId,
+  );
+  if (!data) return null;
+  const { project, milestones, tasks } = data;
 
   const done = tasks.filter((t) => t.status === "done").length;
   const blocked = tasks.filter((t) => t.status === "blocked").length;

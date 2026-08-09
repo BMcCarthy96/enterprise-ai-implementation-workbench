@@ -1,6 +1,7 @@
 import "dotenv/config";
+import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { dbAdmin as db, schema } from "@/db";
 import { hashPassword } from "@/lib/auth/password";
 import { MockProvider } from "@/lib/ai/mock";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@/lib/ai/prompts";
 import { PlanContentSchema } from "@/lib/ai/planSchema";
 import { PROMPT_VERSION } from "@/lib/ai/planSchema";
+import { mockEmbedding } from "@/lib/ai/embeddings";
 
 /**
  * Seeds two demo tenants so the app opens looking like a working business
@@ -139,8 +141,9 @@ async function main() {
     { title: "Exception queue for failed validations", details: "Orders failing validation should land in a reviewable queue with reason codes rather than bouncing back to the customer.", priority: "high" as const, status: "in_plan" as const },
     { title: "Daily ops summary email", details: "End-of-day summary of intake volume, exceptions, and unassigned orders for the operations lead.", priority: "medium" as const, status: "in_plan" as const },
   ];
+  const orderRequirementIds: string[] = [];
   for (const [i, r] of orderReqs.entries()) {
-    await db.insert(schema.requirements).values({
+    const [requirement] = await db.insert(schema.requirements).values({
       orgId: northwind.id,
       projectId: orderProject.id,
       title: r.title,
@@ -149,7 +152,8 @@ async function main() {
       status: r.status,
       createdBy: engineer,
       createdAt: daysAgo(28, i),
-    });
+    }).returning({ id: schema.requirements.id });
+    orderRequirementIds.push(requirement.id);
   }
 
   const onboardingReqs = [
@@ -180,7 +184,8 @@ async function main() {
     customerName: brightlane.name,
     customerIndustry: brightlane.industry,
     targetDate: orderProject.targetDate?.toISOString().slice(0, 10) ?? null,
-    requirements: orderReqs.map((r) => ({
+    requirements: orderReqs.map((r, i) => ({
+      id: orderRequirementIds[i],
       title: r.title,
       details: r.details,
       priority: r.priority,
@@ -192,6 +197,13 @@ async function main() {
     user: buildPlanUserPrompt(planInput),
   });
   const planContent = PlanContentSchema.parse(JSON.parse(planRes.text));
+  planContent.summarySourceRefs = ["S1"];
+  planContent.milestones = planContent.milestones.map((milestone) => ({
+    ...milestone,
+    sourceRefs: ["S1"],
+    tasks: milestone.tasks.map((task) => ({ ...task, sourceRefs: ["S1"] })),
+  }));
+  planContent.risks = planContent.risks.map((risk) => ({ ...risk, sourceRefs: ["S1"] }));
 
   const [genJob] = await db
     .insert(schema.jobs)
@@ -208,6 +220,65 @@ async function main() {
       createdAt: daysAgo(27),
     })
     .returning();
+
+  const traceStarted = daysAgo(27);
+  const traceFinished = daysAgo(27, 0.01);
+  const [seedRun] = await db.insert(schema.aiRuns).values({
+    orgId: northwind.id,
+    projectId: orderProject.id,
+    jobId: genJob.id,
+    artifactType: "plan",
+    provider: "mock",
+    model: "mock",
+    promptVersion: PROMPT_VERSION,
+    status: "succeeded",
+    finalOutcome: "repaired",
+    inputTokens: 1200,
+    outputTokens: 900,
+    costUsd: "0.01500000",
+    pricingVersion: "config-v1",
+    latencyMs: 2350,
+    startedAt: traceStarted,
+    finishedAt: traceFinished,
+    createdAt: traceStarted,
+  }).returning({ id: schema.aiRuns.id });
+  await db.insert(schema.aiCalls).values([
+    {
+      aiRunId: seedRun.id,
+      orgId: northwind.id,
+      sequence: 1,
+      operation: "generate",
+      provider: "mock",
+      model: "mock",
+      promptVersion: PROMPT_VERSION,
+      inputTokens: 900,
+      outputTokens: 700,
+      usageSource: "estimated",
+      costUsd: null,
+      pricingVersion: null,
+      latencyMs: 1800,
+      outcome: "invalid",
+      errorKind: "schema_validation",
+      createdAt: traceStarted,
+    },
+    {
+      aiRunId: seedRun.id,
+      orgId: northwind.id,
+      sequence: 2,
+      operation: "repair",
+      provider: "mock",
+      model: "mock",
+      promptVersion: PROMPT_VERSION,
+      inputTokens: 300,
+      outputTokens: 200,
+      usageSource: "estimated",
+      costUsd: null,
+      pricingVersion: null,
+      latencyMs: 550,
+      outcome: "valid",
+      createdAt: traceFinished,
+    },
+  ]);
 
   // v1 was generated, reviewed, and REJECTED — this populates the rejection
   // reason codes in Insights and demonstrates the closed feedback loop. Its
@@ -279,6 +350,41 @@ async function main() {
     decidedAt: daysAgo(26),
     note: "Revised plan fixes the sequencing — carrier rules now precede the exception queue. Approved.",
     createdAt: daysAgo(27),
+  });
+
+  const sourceText = "Brightlane's order intake brief requires validated submissions, carrier assignment rules, and a reviewable exception queue.";
+  const sourceHash = createHash("sha256").update(sourceText).digest("hex");
+  const [sourceDocument] = await db.insert(schema.documents).values({
+    orgId: northwind.id,
+    projectId: orderProject.id,
+    fileName: "brightlane-order-intake-brief.md",
+    contentType: "text/markdown",
+    sizeBytes: Buffer.byteLength(sourceText),
+    s3Key: `orgs/${northwind.id}/projects/${orderProject.id}/seed-order-brief.md`,
+    status: "ready",
+    sha256: sourceHash,
+    processedAt: daysAgo(27),
+    uploadedBy: engineer,
+    createdAt: daysAgo(28),
+  }).returning({ id: schema.documents.id });
+  const [sourceChunk] = await db.insert(schema.documentChunks).values({
+    orgId: northwind.id,
+    projectId: orderProject.id,
+    documentId: sourceDocument.id,
+    chunkIndex: 0,
+    content: sourceText,
+    contentHash: sourceHash,
+    heading: "Implementation brief",
+    tokenCount: sourceText.split(/\s+/).length,
+    embedding: mockEmbedding(sourceText),
+  }).returning({ id: schema.documentChunks.id });
+  await db.insert(schema.planCitations).values({
+    orgId: northwind.id,
+    projectId: orderProject.id,
+    planId: plan.id,
+    sourceRef: "S1",
+    chunkId: sourceChunk.id,
+    location: "brightlane-order-intake-brief.md · Implementation brief",
   });
 
   console.log("Materializing milestones & tasks with in-flight statuses...");

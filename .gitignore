@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+/infra/node_modules
+/infra/cdk.out
 /.pnp
 .pnp.*
 .yarn/*
@@ -13,8 +15,11 @@
 # testing
 /coverage
 /test-results/
+/artifacts/evidence/
 /playwright-report/
 /playwright/.cache/
+/evals/reports/*.json
+/evals/reports/*.md
 
 # next.js
 /.next/

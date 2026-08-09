@@ -1,0 +1,54 @@
+name: Deploy AWS infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws-region:
+        description: AWS region for the Workbench stack
+        required: true
+        default: us-east-1
+      runtime-secret-name:
+        description: Existing Secrets Manager JSON secret for runtime values
+        required: true
+        default: enterprise-ai-workbench/runtime
+      budget-email:
+        description: Optional budget alert email
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Synthesize and deploy CDK
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm --prefix infra ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ inputs['aws-region'] }}
+
+      - name: Verify CDK template
+        run: npm run infra:synth
+
+      - name: Deploy
+        working-directory: infra
+        run: |
+          npx cdk deploy \
+            -c runtimeSecretName="${{ inputs['runtime-secret-name'] }}" \
+            -c budgetEmail="${{ inputs['budget-email'] }}" \
+            --require-approval never

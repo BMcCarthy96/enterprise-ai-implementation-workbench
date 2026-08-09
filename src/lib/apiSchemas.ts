@@ -108,15 +108,37 @@ export const UpdateTaskSchema = z.object({
   priority: z.enum(["low", "medium", "high", "critical"]).optional(),
 });
 
-export const PresignDocumentSchema = z.object({
-  fileName: z.string().min(1).max(255),
-  contentType: z.string().min(3).max(150),
-  sizeBytes: z
-    .number()
-    .int()
-    .min(1)
-    .max(25 * 1024 * 1024),
-});
+export const SUPPORTED_DOCUMENT_TYPES = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
+  "text/markdown",
+] as const;
+
+export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+
+export const PresignDocumentSchema = z
+  .object({
+    fileName: z.string().min(1).max(255),
+    contentType: z.string().min(3).max(150),
+    sizeBytes: z.number().int().min(1).max(MAX_DOCUMENT_BYTES),
+  })
+  .superRefine((value, ctx) => {
+    if (!(SUPPORTED_DOCUMENT_TYPES as readonly string[]).includes(value.contentType)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["contentType"],
+        message: "Only PDF, DOCX, TXT, and Markdown files are supported",
+      });
+    }
+    if (!/\.(pdf|docx|txt|md|markdown)$/i.test(value.fileName)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["fileName"],
+        message: "File extension must match PDF, DOCX, TXT, or Markdown",
+      });
+    }
+  });
 
 export const RegisterDocumentSchema = z.object({
   fileName: z.string().min(1).max(255),

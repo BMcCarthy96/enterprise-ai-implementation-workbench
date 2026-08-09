@@ -1,10 +1,11 @@
 import { and, desc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
+import { uuidParam } from "@/server/services/access";
 
 export const dynamic = "force-dynamic";
 
@@ -15,34 +16,36 @@ export default async function AuditPage({
 }) {
   const session = (await getSession())!;
   if (!can(session.role, "audit.view")) redirect("/dashboard");
-  const { project } = await searchParams;
+  const { project: rawProject } = await searchParams;
+  const project = rawProject ? uuidParam(rawProject, "projectId") : undefined;
 
-  const projects = await db.query.projects.findMany({
-    where: eq(schema.projects.orgId, session.orgId),
-  });
+  return withTenantTransaction(session.orgId, async () => {
+    const projects = await db.query.projects.findMany({
+      where: eq(schema.projects.orgId, session.orgId),
+    });
 
-  const events = await db
-    .select({
-      event: schema.auditEvents,
-      actorName: schema.users.name,
-      projectName: schema.projects.name,
-    })
-    .from(schema.auditEvents)
-    .leftJoin(schema.users, eq(schema.auditEvents.actorId, schema.users.id))
-    .leftJoin(
-      schema.projects,
-      eq(schema.auditEvents.projectId, schema.projects.id),
-    )
-    .where(
-      and(
-        eq(schema.auditEvents.orgId, session.orgId),
-        project ? eq(schema.auditEvents.projectId, project) : undefined,
-      ),
-    )
-    .orderBy(desc(schema.auditEvents.createdAt))
-    .limit(200);
+    const events = await db
+      .select({
+        event: schema.auditEvents,
+        actorName: schema.users.name,
+        projectName: schema.projects.name,
+      })
+      .from(schema.auditEvents)
+      .leftJoin(schema.users, eq(schema.auditEvents.actorId, schema.users.id))
+      .leftJoin(
+        schema.projects,
+        eq(schema.auditEvents.projectId, schema.projects.id),
+      )
+      .where(
+        and(
+          eq(schema.auditEvents.orgId, session.orgId),
+          project ? eq(schema.auditEvents.projectId, project) : undefined,
+        ),
+      )
+      .orderBy(desc(schema.auditEvents.createdAt))
+      .limit(200);
 
-  return (
+    return (
     <div>
       <PageHeader
         title="Audit Log"
@@ -122,6 +125,7 @@ export default async function AuditPage({
           </table>
         </div>
       )}
-    </div>
-  );
+      </div>
+    );
+  }, session.userId);
 }

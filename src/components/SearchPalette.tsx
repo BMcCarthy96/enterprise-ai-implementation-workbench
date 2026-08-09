@@ -151,14 +151,14 @@ export function SearchPalette() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:border-gray-300 hover:bg-white"
+        className="flex w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-400 transition-colors hover:border-white/20 hover:bg-white/10"
         aria-label="Open search"
       >
         <SearchIcon />
         <span className="flex-1 text-left">Search…</span>
         <kbd
           suppressHydrationWarning
-          className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-500"
+          className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-slate-400"
         >
           {shortcutHint()}
         </kbd>

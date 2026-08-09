@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
@@ -19,71 +19,72 @@ export default async function ApprovalsPage() {
   const session = (await getSession())!;
   const canDecide = can(session.role, "approvals.decide");
 
-  const pending = await db
-    .select({
-      approval: schema.approvals,
-      projectName: schema.projects.name,
-    })
-    .from(schema.approvals)
-    .leftJoin(
-      schema.projects,
-      eq(schema.approvals.projectId, schema.projects.id),
-    )
-    .where(
-      and(
-        eq(schema.approvals.orgId, session.orgId),
-        eq(schema.approvals.status, "pending"),
-      ),
-    )
-    .orderBy(desc(schema.approvals.createdAt));
-
-  // Load subject previews.
-  const planIds = pending
-    .filter((p) => p.approval.subjectType === "plan")
-    .map((p) => p.approval.subjectId);
-  const updateIds = pending
-    .filter((p) => p.approval.subjectType === "customer_update")
-    .map((p) => p.approval.subjectId);
-
-  const plans = planIds.length
-    ? await db.query.plans.findMany({
-        where: inArray(schema.plans.id, planIds),
+  return withTenantTransaction(session.orgId, async () => {
+    const pending = await db
+      .select({
+        approval: schema.approvals,
+        projectName: schema.projects.name,
       })
-    : [];
-  const updates = updateIds.length
-    ? await db.query.customerUpdates.findMany({
-        where: inArray(schema.customerUpdates.id, updateIds),
+      .from(schema.approvals)
+      .leftJoin(
+        schema.projects,
+        eq(schema.approvals.projectId, schema.projects.id),
+      )
+      .where(
+        and(
+          eq(schema.approvals.orgId, session.orgId),
+          eq(schema.approvals.status, "pending"),
+        ),
+      )
+      .orderBy(desc(schema.approvals.createdAt));
+
+    // Load subject previews.
+    const planIds = pending
+      .filter((p) => p.approval.subjectType === "plan")
+      .map((p) => p.approval.subjectId);
+    const updateIds = pending
+      .filter((p) => p.approval.subjectType === "customer_update")
+      .map((p) => p.approval.subjectId);
+
+    const plans = planIds.length
+      ? await db.query.plans.findMany({
+          where: inArray(schema.plans.id, planIds),
+        })
+      : [];
+    const updates = updateIds.length
+      ? await db.query.customerUpdates.findMany({
+          where: inArray(schema.customerUpdates.id, updateIds),
+        })
+      : [];
+
+    // Minimal serializable descriptor for the client-side bulk selection.
+    const bulkItems: BulkItem[] = pending.map(({ approval }) => ({
+      id: approval.id,
+      subjectType: approval.subjectType,
+    }));
+
+    const recentDecisions = await db
+      .select({
+        approval: schema.approvals,
+        projectName: schema.projects.name,
+        deciderName: schema.users.name,
       })
-    : [];
+      .from(schema.approvals)
+      .leftJoin(
+        schema.projects,
+        eq(schema.approvals.projectId, schema.projects.id),
+      )
+      .leftJoin(schema.users, eq(schema.approvals.decidedBy, schema.users.id))
+      .where(
+        and(
+          eq(schema.approvals.orgId, session.orgId),
+          inArray(schema.approvals.status, ["approved", "rejected"]),
+        ),
+      )
+      .orderBy(desc(schema.approvals.decidedAt))
+      .limit(10);
 
-  // Minimal serializable descriptor for the client-side bulk selection.
-  const bulkItems: BulkItem[] = pending.map(({ approval }) => ({
-    id: approval.id,
-    subjectType: approval.subjectType,
-  }));
-
-  const recentDecisions = await db
-    .select({
-      approval: schema.approvals,
-      projectName: schema.projects.name,
-      deciderName: schema.users.name,
-    })
-    .from(schema.approvals)
-    .leftJoin(
-      schema.projects,
-      eq(schema.approvals.projectId, schema.projects.id),
-    )
-    .leftJoin(schema.users, eq(schema.approvals.decidedBy, schema.users.id))
-    .where(
-      and(
-        eq(schema.approvals.orgId, session.orgId),
-        inArray(schema.approvals.status, ["approved", "rejected"]),
-      ),
-    )
-    .orderBy(desc(schema.approvals.decidedAt))
-    .limit(10);
-
-  return (
+    return (
     <div>
       <PageHeader
         title="Approvals"
@@ -219,6 +220,7 @@ export default async function ApprovalsPage() {
           </ul>
         </div>
       )}
-    </div>
-  );
+      </div>
+    );
+  }, session.userId);
 }

@@ -1,5 +1,5 @@
 import { desc, eq, and } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -19,15 +19,20 @@ export default async function UpdatesPage({
   const canDraft = can(session.role, "updates.draft");
 
   // Customer stakeholders only ever see published updates.
-  const updates = await db.query.customerUpdates.findMany({
-    where: internal
-      ? eq(schema.customerUpdates.projectId, projectId)
-      : and(
-          eq(schema.customerUpdates.projectId, projectId),
-          eq(schema.customerUpdates.status, "published"),
-        ),
-    orderBy: desc(schema.customerUpdates.createdAt),
-  });
+  const updates = await withTenantTransaction(
+    session.orgId,
+    () =>
+      db.query.customerUpdates.findMany({
+        where: internal
+          ? eq(schema.customerUpdates.projectId, projectId)
+          : and(
+              eq(schema.customerUpdates.projectId, projectId),
+              eq(schema.customerUpdates.status, "published"),
+            ),
+        orderBy: desc(schema.customerUpdates.createdAt),
+      }),
+    session.userId,
+  );
 
   return (
     <div>

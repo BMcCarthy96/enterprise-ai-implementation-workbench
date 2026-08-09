@@ -1,108 +1,116 @@
-# Deploying to real AWS
+# Deploying the Enterprise AI Implementation Workbench
 
-The app is developed against LocalStack, but every integration uses the real AWS SDK v3. Moving to a live account is a **configuration change, not a code change**: drop `AWS_ENDPOINT_URL`, point `DATABASE_URL` at RDS, set real queue/bucket names, and flip `AI_PROVIDER=bedrock`.
+The production shape is intentionally AWS-first while keeping the application portable:
 
-## 1. Account prerequisites
+- **Neon Postgres + pgvector** supplies a pooled runtime URL and a separate direct admin/migration URL.
+- **CDK** provisions a private encrypted S3 bucket, SQS queue + DLQ, an SQS-triggered Lambda worker, a one-minute durable-dispatch reconciler, an hourly expired-demo cleanup Lambda, CloudWatch alarms, and a $15 monthly budget.
+- **Bedrock Converse** runs Claude plan generation; **Titan Text Embeddings v2** powers retrieval.
+- **Vercel** can host the Next.js UI, but its runtime must use an approved short-lived AWS credential pattern. The optional OIDC role in this stack is a deployment-role scaffold, not a reason to place long-lived AWS keys in Vercel.
 
-1. Create an AWS account and enable MFA on the root user.
-2. Create an IAM user or (better) an IAM Identity Center profile for yourself; never deploy as root.
-3. Pick one region (e.g. `us-east-1`) and stay in it — Bedrock model access is per-region.
+The local/cloud switch remains configuration-only: remove `AWS_ENDPOINT_URL`, use the real Neon URLs and CDK outputs, and set `AI_PROVIDER=bedrock` plus `EMBEDDING_PROVIDER=bedrock`.
 
-## 2. Resources to create
+## Prerequisites
 
-| Resource | Service | Notes | Free-tier friendly? |
-|---|---|---|---|
-| Postgres database | RDS (db.t4g.micro, 20 GB) | Single-AZ for a demo; enable automated backups | 12-month free tier |
-| `workbench-documents` | S3 | Block all public access; SSE-S3 encryption is on by default | Effectively free at demo scale |
-| `workbench-jobs` + `workbench-jobs-dlq` | SQS | Same redrive policy as `scripts/localstack-init.sh` (maxReceiveCount 5, visibility 120s) | 1M requests/month always free |
-| Claude model access | Bedrock | Console → Bedrock → Model access → enable Anthropic Claude models | Pay-per-token only |
-| App hosting | App Runner (simplest) or ECS Fargate | Container from the Next.js standalone build; point the health check at `GET /api/health` | ~$5–15/mo smallest sizes |
-| Worker | ECS Fargate service (0.25 vCPU) running `npm run worker`, or refactor the handler into an SQS-triggered Lambda | Fargate ~$9/mo; Lambda ~free at demo volume |
+1. An AWS account with MFA and an IAM Identity Center profile (do not use the root user).
+2. Bedrock model access enabled in one region for the selected Claude and Titan models.
+3. A Neon project with the `vector` extension enabled. Use a pooled connection for `DATABASE_URL` and the direct connection for `DATABASE_ADMIN_URL`.
+4. Node 22+, Docker Desktop, and the AWS CLI/CDK bootstrap permissions.
 
-The SQS redrive policy in `scripts/localstack-init.sh` is the exact spec to mirror; it doubles as infrastructure documentation.
+Pick one region and keep Neon, S3, SQS, and Bedrock aligned to it where applicable (the default is `us-east-1`).
 
-## 3. IAM policy for the app + worker
+## Create the runtime secret
 
-Least-privilege policy (attach to the App Runner / ECS task role):
+Create one Secrets Manager JSON secret before deploying the stack. The CDK functions resolve these fields into their environment at deploy time; no secret values are committed to the template or source tree.
 
 ```json
 {
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::workbench-documents/orgs/*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "sqs:SendMessage",
-        "sqs:ReceiveMessage",
-        "sqs:DeleteMessage",
-        "sqs:GetQueueAttributes"
-      ],
-      "Resource": [
-        "arn:aws:sqs:*:*:workbench-jobs",
-        "arn:aws:sqs:*:*:workbench-jobs-dlq"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["bedrock:InvokeModel"],
-      "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.*"
-    }
-  ]
+  "DATABASE_URL": "postgres://runtime:<password>@<pooled-neon-host>/workbench?sslmode=require",
+  "DATABASE_ADMIN_URL": "postgres://admin:<password>@<direct-neon-host>:5432/workbench?sslmode=require",
+  "SESSION_SECRET": "<at-least-32-character-random-value>"
 }
 ```
 
-With a task role in place, **do not set** `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` — the SDK default credential chain picks up the role automatically.
+```bash
+aws secretsmanager create-secret \
+  --name enterprise-ai-workbench/runtime \
+  --secret-string file://runtime-secret.json \
+  --region us-east-1
+```
 
-## 4. Environment for production
+If the secret has another name, pass `-c runtimeSecretName=your/name` to CDK commands below.
+
+## Synthesize and deploy the AWS stack
 
 ```bash
-DATABASE_URL=postgres://workbench:<password>@<rds-endpoint>:5432/workbench
-SESSION_SECRET=<openssl rand -base64 48>          # store in Secrets Manager / SSM
+npm run infra:install
+cd infra
+npx cdk bootstrap
+npx cdk synth
+npx cdk deploy \
+  -c runtimeSecretName=enterprise-ai-workbench/runtime \
+  -c budgetEmail=you@example.com \
+  -c vercelTeamId=<team-id> \
+  -c vercelProject=<project-name>
+```
+
+The deploy prints `DocumentsBucketName`, `JobsQueueUrl`, and `JobsDlqUrl`. Copy those values into the application runtime environment. The stack uses a 120-second Lambda timeout, 720-second SQS visibility timeout, batch size 5, reserved concurrency 2, partial-batch failure reporting, and a five-delivery DLQ policy.
+
+For a repeatable release path, the repository also includes a manual
+`.github/workflows/deploy.yml` workflow. Configure the GitHub environment with
+an `AWS_DEPLOY_ROLE_ARN` secret whose trust policy accepts GitHub's OIDC
+provider, then dispatch the workflow with the region and pre-created runtime
+secret name. The workflow synthesizes the template before deploying and never
+stores database, session, or AWS access-key values in GitHub.
+
+## Migrate Neon and configure the application
+
+Run migrations with the direct admin URL, never the pooled runtime role:
+
+```bash
+$env:DATABASE_URL="postgres://runtime:..."
+$env:DATABASE_ADMIN_URL="postgres://admin:..."
+npm run db:migrate
+```
+
+Configure the Next.js runtime with:
+
+```bash
+DATABASE_URL=<pooled Neon runtime URL>
+DATABASE_ADMIN_URL=<direct Neon admin URL>
+SESSION_SECRET=<same secret value>
 AWS_REGION=us-east-1
-# AWS_ENDPOINT_URL intentionally unset → real AWS endpoints
-S3_BUCKET=workbench-documents
-JOBS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/<account-id>/workbench-jobs
+S3_BUCKET=<DocumentsBucketName output>
+JOBS_QUEUE_URL=<JobsQueueUrl output>
 AI_PROVIDER=bedrock
 BEDROCK_MODEL_ID=anthropic.claude-sonnet-4-5-20250929-v1:0
+EMBEDDING_PROVIDER=bedrock
+BEDROCK_EMBEDDING_MODEL_ID=amazon.titan-embed-text-v2:0
 NODE_ENV=production
 ```
 
-Store `DATABASE_URL` and `SESSION_SECRET` in AWS Secrets Manager (App Runner and ECS both support secret env injection).
+The Lambda worker receives its database and session values from Secrets Manager and its bucket/queue names directly from the CDK stack. Its IAM role is limited to the required S3, SQS send/consume, Bedrock model invocation, and CloudWatch execution duties; the database roles enforce application-vs-admin separation.
 
-## 5. Deploy steps
+For a Vercel-hosted UI, use a short-lived OIDC/role-assumption bridge or keep the server runtime in an AWS role-bearing service such as App Runner/ECS. Do not put a permanent `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` pair in Vercel project settings. The optional Vercel OIDC context in CDK is constrained to the named project/environment and is intended for deployment automation.
 
-```bash
-# one-time
-aws s3 mb s3://workbench-documents
-aws sqs create-queue --queue-name workbench-jobs-dlq
-aws sqs create-queue --queue-name workbench-jobs --attributes file://redrive.json
+## Local-to-cloud mapping
 
-# each release (App Runner from ECR example)
-docker build -t workbench .
-docker tag workbench:latest <account>.dkr.ecr.us-east-1.amazonaws.com/workbench:latest
-docker push <account>.dkr.ecr.us-east-1.amazonaws.com/workbench:latest
-npm run db:migrate   # against RDS, from CI or a bastion
-```
-
-## 6. What changes at each layer
-
-| Layer | Local | AWS | Code change |
+| Capability | Local | AWS | Code change |
 |---|---|---|---|
-| Postgres | Docker container :5433 | RDS | none — `DATABASE_URL` |
-| S3 | LocalStack | S3 | none — endpoint var removed |
-| SQS | LocalStack | SQS | none — `JOBS_QUEUE_URL` |
-| LLM | `MockProvider` | `BedrockProvider` | none — `AI_PROVIDER` |
-| Auth secret | .env | Secrets Manager | none |
-| Logs | pretty console | CloudWatch (JSON) | none — pino already emits JSON |
+| Postgres | Docker `pgvector/pg16` on `:5433` | Neon pooled runtime + direct admin URL | Environment only |
+| Object storage | LocalStack S3 | Private encrypted S3 | Environment only |
+| Jobs | LocalStack SQS + DLQ | SQS + DLQ + Lambda event source | Same `processJob` path |
+| Dispatch repair | Worker poll-loop reconciliation | One-minute EventBridge + Lambda reconciliation | Same `dispatchUndeliveredJobs` service |
+| Plan model | Deterministic mock | Bedrock Claude Converse | `AI_PROVIDER` |
+| Embeddings | Deterministic mock vectors | Bedrock Titan Text Embeddings v2 | `EMBEDDING_PROVIDER` |
+| Demo cleanup | Service call | Scheduled Lambda + S3 prefix cleanup | Same service |
 
-## 7. Cost guardrails
+## Security and operations checklist
 
-- Set a **billing alarm** (Budgets → $10/month alert) before creating anything.
-- RDS is the only always-on cost after free tier; stop the instance when not demoing.
-- Bedrock is pay-per-token; the plan/digest prompts run ~2–4k tokens per job — cents per demo.
-- Delete the App Runner service (or scale ECS to 0) between interview cycles; the data survives in RDS/S3.
+- Keep `DATABASE_URL` on a least-privilege runtime role and `DATABASE_ADMIN_URL` on a separate migration/cleanup role.
+- After provisioning those roles, force RLS on tenant tables and grant the runtime role only the tables/actions needed by the app.
+- Keep S3 public access blocked and preserve the `orgs/{orgId}/projects/{projectId}/...` key namespace.
+- Enable the CloudWatch queue-age, DLQ, and worker-error alarms before a recruiter demo.
+- The cleanup Lambda removes expired demo organizations and their exact `orgs/{orgId}/` object prefixes hourly.
+- Keep the $15 budget and email thresholds enabled; Bedrock is pay-per-token and Neon/S3/SQS are usage-based.
+
+The trust-boundary details, redaction behavior, RLS assumptions, and explicit non-goals are in [security.md](security.md). The repeatable 90-second walkthrough is in [recruiter-demo-script.md](recruiter-demo-script.md).

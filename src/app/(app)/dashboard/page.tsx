@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
@@ -13,8 +13,9 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const session = (await getSession())!;
-  const orgId = session.orgId;
-  const isInternal = can(session.role, "internal.view");
+  return withTenantTransaction(session.orgId, async () => {
+    const orgId = session.orgId;
+    const isInternal = can(session.role, "internal.view");
 
   const projects = await db
     .select({
@@ -84,7 +85,7 @@ export default async function DashboardPage() {
       ]
     : [{ label: "Projects", value: projects.length, href: "/projects" }];
 
-  return (
+    return (
     <div>
       <PageHeader
         title={`Welcome back, ${session.name.split(" ")[0]}`}
@@ -168,6 +169,7 @@ export default async function DashboardPage() {
           </div>
         )}
       </div>
-    </div>
-  );
+      </div>
+    );
+  }, session.userId);
 }

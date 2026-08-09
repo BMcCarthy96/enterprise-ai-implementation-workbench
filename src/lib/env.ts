@@ -6,15 +6,25 @@ import { z } from "zod";
  */
 const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
+  DATABASE_ADMIN_URL: z.string().url().optional(),
   SESSION_SECRET: z.string().min(32),
   AWS_REGION: z.string().default("us-east-1"),
   AWS_ENDPOINT_URL: z.string().url().optional(),
   S3_BUCKET: z.string().min(1),
   JOBS_QUEUE_URL: z.string().url(),
-  AI_PROVIDER: z.enum(["mock", "bedrock"]).default("mock"),
+  AI_PROVIDER: z.enum(["mock", "bedrock", "anthropic"]).default("mock"),
   BEDROCK_MODEL_ID: z
     .string()
     .default("anthropic.claude-sonnet-4-5-20250929-v1:0"),
+  EMBEDDING_PROVIDER: z.enum(["mock", "bedrock"]).default("mock"),
+  BEDROCK_EMBEDDING_MODEL_ID: z
+    .string()
+    .default("amazon.titan-embed-text-v2:0"),
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  ANTHROPIC_MODEL_ID: z
+    .string()
+    .default("claude-sonnet-4-5-20250929"),
+  PROMPT_VARIANT: z.string().min(1).optional(),
   LOG_LEVEL: z
     .enum(["trace", "debug", "info", "warn", "error"])
     .default("info"),

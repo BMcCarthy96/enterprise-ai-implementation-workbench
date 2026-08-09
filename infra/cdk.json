@@ -1,0 +1,9 @@
+{
+  "app": "npx ts-node --prefer-ts-exts bin/workbench.ts",
+  "context": {
+    "workbenchProject": "enterprise-ai-implementation-workbench",
+    "workbenchEnvironment": "production",
+    "budgetUsd": 15,
+    "region": "us-east-1"
+  }
+}

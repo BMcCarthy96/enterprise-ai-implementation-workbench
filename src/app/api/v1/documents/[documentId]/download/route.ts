@@ -5,7 +5,7 @@ import { requireDocument } from "@/server/services/access";
 
 type Params = { documentId: string };
 
-export const GET = withAuth<Params>(null, async (_req, { session }, params) => {
+export const GET = withAuth<Params>("internal.view", async (_req, { session }, params) => {
   const document = await requireDocument(params.documentId, session.orgId);
   const url = await presignDownload(document.s3Key, document.fileName);
   return NextResponse.json({ url });
