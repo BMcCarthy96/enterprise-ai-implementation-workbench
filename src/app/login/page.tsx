@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 import { LoginForm } from "./LoginForm";
+import { env } from "@/lib/env";
 
 export default function LoginPage() {
+  const defaultConnection = env().OIDC_DEFAULT_CONNECTION;
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
@@ -12,7 +14,7 @@ export default function LoginPage() {
           <h1 className="text-xl font-semibold text-gray-900">
             Implementation Workbench
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-gray-600">
             Sign in to your workspace
           </p>
         </div>
@@ -20,6 +22,14 @@ export default function LoginPage() {
           <Suspense>
             <LoginForm />
           </Suspense>
+          {defaultConnection && (
+            <a
+              href={"/api/auth/oidc/start?connection=" + encodeURIComponent(defaultConnection)}
+              className="btn-secondary mt-4 w-full"
+            >
+              Continue with enterprise SSO
+            </a>
+          )}
         </div>
         <div className="card mt-4 p-4 text-xs text-gray-500">
           <p className="mb-1.5 font-semibold text-gray-600">

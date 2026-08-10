@@ -92,6 +92,27 @@
       "when": 1786220009000,
       "tag": "0012_ai_redaction_telemetry",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786306780068,
+      "tag": "0013_demo_scenario_refs",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786306781068,
+      "tag": "0014_ai_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1786306782068,
+      "tag": "0015_enterprise_credibility",
+      "breakpoints": true
     }
   ]
 }

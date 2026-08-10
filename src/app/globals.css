@@ -81,6 +81,14 @@ body {
   @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
 }
 
+.badge-green {
+  @apply bg-emerald-50 text-emerald-700;
+}
+
+.badge-amber {
+  @apply bg-amber-100 text-amber-800;
+}
+
 .table-th {
   @apply px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500;
 }

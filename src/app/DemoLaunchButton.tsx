@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function DemoLaunchButton() {
+export function DemoLaunchButton({ checkpoint }: { checkpoint?: string } = {}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +15,7 @@ export function DemoLaunchButton() {
       const response = await fetch("/api/demo/session", { method: "POST" });
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error ?? "Demo is temporarily unavailable");
-      router.push("/dashboard");
+      router.push(checkpoint ? "/dashboard?checkpoint=" + encodeURIComponent(checkpoint) : "/dashboard");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Demo is temporarily unavailable");

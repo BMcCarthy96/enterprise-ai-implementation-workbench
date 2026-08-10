@@ -6,6 +6,8 @@ import { can, ROLE_LABELS, type Permission } from "@/lib/auth/rbac";
 import { LogoutButton } from "@/components/LogoutButton";
 import { SearchPalette } from "@/components/SearchPalette";
 import { NavLinks } from "./NavLinks";
+import { AppShell } from "./AppShell";
+import { getTourManifest } from "@/server/services/tour";
 
 export interface NavItem {
   href: string;
@@ -26,7 +28,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     label: "AI quality",
     items: [
       { href: "/insights", label: "Insights", permission: "audit.view" },
-      { href: "/ai-runs", label: "AI Runs", permission: "audit.view" },
+      { href: "/ai-runs", label: "AI Evidence", permission: "audit.view" },
     ],
   },
   {
@@ -56,33 +58,44 @@ export default async function AppLayout({
       (n) => n.permission === null || can(session.role, n.permission),
     ),
   })).filter((group) => group.items.length > 0);
-  const demoWorkspace = session.demoWorkspaceId
-    ? await withTenantTransaction(
-        session.orgId,
-        () =>
-          db.query.demoWorkspaces.findFirst({
+  const { demoWorkspace, tourManifest } = await withTenantTransaction(
+    session.orgId,
+    async () => ({
+      demoWorkspace: session.demoWorkspaceId
+        ? await db.query.demoWorkspaces.findFirst({
             where: and(
               eq(schema.demoWorkspaces.id, session.demoWorkspaceId!),
               eq(schema.demoWorkspaces.orgId, session.orgId),
             ),
             columns: {
+              expiresAt: true,
               generationJobsUsed: true,
               maxGenerationJobs: true,
               uploadCount: true,
               maxUploads: true,
               uploadBytes: true,
               maxStorageBytes: true,
+              scenarioRefs: true,
             },
-          }),
-        session.userId,
-      )
-    : null;
-  const formatBytes = (bytes: number) =>
-    bytes >= 1024 * 1024
-      ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-      : `${Math.round(bytes / 1024)} KB`;
+          })
+        : null,
+      tourManifest: await getTourManifest(session),
+    }),
+    session.userId,
+  );
 
   return (
+    <AppShell
+      manifest={tourManifest}
+      userId={session.userId}
+      role={session.role}
+      demoQuota={demoWorkspace ? {
+        expiresAt: demoWorkspace.expiresAt.toISOString(),
+        generations: { used: demoWorkspace.generationJobsUsed, limit: demoWorkspace.maxGenerationJobs },
+        uploads: { used: demoWorkspace.uploadCount, limit: demoWorkspace.maxUploads },
+        storageBytes: { used: demoWorkspace.uploadBytes, limit: demoWorkspace.maxStorageBytes },
+      } : null}
+    >
     <div className="flex min-h-screen">
       <aside className="fixed inset-y-0 flex w-60 flex-col border-r border-slate-800 bg-[#081526]">
         <div className="flex items-center gap-2 border-b border-white/10 px-4 py-4">
@@ -114,17 +127,7 @@ export default async function AppLayout({
         </div>
       </aside>
       <main className="ml-60 flex-1 px-8 py-6">{children}</main>
-      {session.demoWorkspaceId && (
-        <div className="pointer-events-none fixed bottom-4 right-4 z-50 max-w-sm rounded-lg border border-cyan-200 bg-slate-950 px-4 py-3 text-xs text-white shadow-xl">
-          <p className="font-semibold text-cyan-300">Isolated interactive demo</p>
-          <p className="mt-1 text-slate-300">Synthetic workspace · expires {session.demoExpiresAt ? new Date(session.demoExpiresAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "soon"}</p>
-          {demoWorkspace && (
-            <p className="mt-1 text-slate-400">
-              {demoWorkspace.maxGenerationJobs - demoWorkspace.generationJobsUsed} AI generations left · {demoWorkspace.maxUploads - demoWorkspace.uploadCount} uploads left · {formatBytes(demoWorkspace.uploadBytes)} / {formatBytes(demoWorkspace.maxStorageBytes)}
-            </p>
-          )}
-        </div>
-      )}
     </div>
+    </AppShell>
   );
 }

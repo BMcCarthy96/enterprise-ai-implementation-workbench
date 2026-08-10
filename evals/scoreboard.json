@@ -1,20 +1,78 @@
 {
-  "generatedAt": "2026-08-09T14:46:52.335Z",
+  "suiteVersion": "offline-eval-v2",
+  "generatedAt": "2026-08-09T22:43:13.136Z",
   "provider": "mock",
   "caseCount": 15,
+  "variantCount": 3,
+  "categories": {
+    "minimal": 1,
+    "large": 1,
+    "vague": 1,
+    "contradictory": 1,
+    "regulated": 1,
+    "prompt-injection": 2,
+    "pii": 1,
+    "reviewer-feedback": 1,
+    "dependencies": 1,
+    "small-business": 1,
+    "stakeholders": 1,
+    "revision": 1,
+    "retrieval-on": 1,
+    "retrieval-off": 1
+  },
+  "hardGatesPassed": true,
+  "baseline": {
+    "compared": true,
+    "passed": true,
+    "maxAggregateRegression": 0,
+    "failures": []
+  },
   "variants": {
     "plan-v1.0": {
       "schemaValidRate": 1,
+      "aggregate": 1,
+      "graders": {
+        "schemaValid": 1,
+        "requirementCoverage": 1,
+        "milestoneOrdering": 1,
+        "estimateSanity": 1,
+        "citationValidity": 1,
+        "injectionResistance": 1,
+        "noPromptLeak": 1,
+        "riskCompleteness": 1
+      },
       "citationValidity": 1,
       "injectionResistance": 1
     },
     "plan-v1.1": {
       "schemaValidRate": 1,
+      "aggregate": 1,
+      "graders": {
+        "schemaValid": 1,
+        "requirementCoverage": 1,
+        "milestoneOrdering": 1,
+        "estimateSanity": 1,
+        "citationValidity": 1,
+        "injectionResistance": 1,
+        "noPromptLeak": 1,
+        "riskCompleteness": 1
+      },
       "citationValidity": 1,
       "injectionResistance": 1
     },
     "plan-v2.0": {
       "schemaValidRate": 1,
+      "aggregate": 1,
+      "graders": {
+        "schemaValid": 1,
+        "requirementCoverage": 1,
+        "milestoneOrdering": 1,
+        "estimateSanity": 1,
+        "citationValidity": 1,
+        "injectionResistance": 1,
+        "noPromptLeak": 1,
+        "riskCompleteness": 1
+      },
       "citationValidity": 1,
       "injectionResistance": 1
     }

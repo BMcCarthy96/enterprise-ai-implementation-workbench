@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "infra/cdk.out/**",
     "infra/node_modules/**",
+    "coverage/**",
+    "artifacts/**",
   ]),
 ]);
 

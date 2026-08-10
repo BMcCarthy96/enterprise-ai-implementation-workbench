@@ -14,7 +14,7 @@ Four personas have different powers: the admin owns the organization, the implem
 
 ## Architecture in one breath
 
-Next.js + REST over PostgreSQL/pgvector, private S3, SQS + DLQ, Bedrock Claude/Titan adapters, and a shared worker path that runs locally or behind an SQS-triggered Lambda. Retrieval is tenant- and project-filtered, source refs are persisted with plans, and AI Runs expose sanitized call traces without storing raw prompts. CDK captures the AWS shape; the deterministic mock keeps the full workflow runnable with zero cloud credentials.
+Next.js + REST over PostgreSQL/pgvector, private S3, SQS + DLQ, Bedrock Claude/Titan adapters, and a shared worker path that runs locally or behind an SQS-triggered Lambda. Retrieval is tenant- and project-filtered, source refs are persisted with plans, and the AI Evidence Center exposes sanitized call traces, normalized evaluations, coverage, and human decisions without storing raw prompts or model output. CDK captures the AWS shape; the deterministic mock keeps the full workflow runnable with zero cloud credentials.
 
 ## Hardest tradeoff
 
@@ -27,12 +27,14 @@ Trust is enforced in layers with different jobs: the prompt constrains format an
 - A model response gets at most one repair call. If the repaired output still fails schema or guardrails, no plan is persisted.
 - Document ingestion is idempotent: content hashes replace chunks safely, unsupported or malformed files become visible failed states, and embedding calls are traceable without storing source text in telemetry.
 - The public demo reserves quota and estimated spend before a model call; exhausted limits return a typed response without starting generation.
+- Demo role switching changes the actual session identity only among four seeded memberships in the active isolated workspace. Safe redirects and the existing RBAC matrix remain authoritative; the feature never impersonates a production user or extends demo lifetime.
 
 ## Measured evidence
 
 - The committed offline fixture suite covers 15 synthetic cases × 3 prompt variants, including retrieval-on/retrieval-off pairs: 100% schema validity, requirement coverage, and citation/injection gates, with a hard regression check.
 - Every generated plan carries `model` and `promptVersion`; every AI run carries provider/model, usage source, versioned pricing, latency, repair outcome, and sanitized error classification.
-- The AI Runs surface makes retrieval, generation, repair, guardrails, and citations inspectable. Raw production prompts and document chunks are intentionally excluded.
+- The AI Evidence Center makes retrieval, generation, repair, guardrails, automated checks, requirement/citation coverage, artifact links, and approval outcomes inspectable. Raw production prompts, source text, and model output are intentionally excluded; legacy runs remain readable with a clear “not recorded” state.
+- The committed offline scorecard records the complete grader matrix, hard-gate status, baseline delta, suite version, case categories, provider, and freshness separately from live traces.
 - The optional LLM judge emits a schema-validated five-point score for clarity, actionability, business tone, and scope discipline; calibration keeps it advisory unless the 15-output Spearman/MAE thresholds are met.
 - The seed data includes a rejected plan, a repaired approved plan, a pending approval queue, a grounded source document, a dead-letter job, and a second tenant for isolation checks.
 

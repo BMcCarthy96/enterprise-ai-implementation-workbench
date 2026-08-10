@@ -61,6 +61,11 @@ export function buildOpenApiDocument() {
           name: "workbench_session",
           description: "HS256 JWT session cookie set by POST /api/auth/login",
         },
+        scimBearer: {
+          type: "http",
+          scheme: "bearer",
+          description: "Organization-scoped SCIM token. The plaintext is shown only at creation.",
+        },
       },
     },
     security: [{ sessionCookie: [] }],
@@ -98,6 +103,14 @@ export function buildOpenApiDocument() {
           responses: { "200": jsonResponse("Signed out") },
         },
       },
+      "/api/proof/manifest": {
+        get: {
+          tags: ["Portfolio proof"],
+          summary: "Public, secret-free proof claims and offline evaluation metadata",
+          security: [],
+          responses: { "200": jsonResponse("Proof manifest") },
+        },
+      },
       "/api/demo/session": {
         post: {
           tags: ["Demo"],
@@ -107,6 +120,23 @@ export function buildOpenApiDocument() {
             "200": jsonResponse("Workspace session and remaining quotas"),
             "429": { description: "Demo capacity or quota reached" },
             "503": { description: "Demo budget or dependency unavailable" },
+          },
+        },
+      },
+      "/api/demo/role": {
+        post: {
+          tags: ["Demo"],
+          summary: "Switch among seeded personas in the active isolated demo (never a production impersonation endpoint)",
+          requestBody: body(z.object({
+            role: z.enum(["org_admin", "implementation_manager", "solutions_engineer", "customer_stakeholder"]),
+            returnTo: z.string().optional(),
+          })),
+          responses: {
+            "200": jsonResponse("Session switched: { user, redirectTo, expiresAt }"),
+            "400": { description: "Invalid persona" },
+            "401": { description: "Active demo session required" },
+            "403": { description: "Persona or origin not allowed" },
+            "409": { description: "Persona seed unavailable" },
           },
         },
       },
@@ -371,7 +401,7 @@ export function buildOpenApiDocument() {
       "/api/v1/ai-runs": {
         get: {
           tags: ["AI quality"],
-          summary: "List tenant-scoped AI run traces",
+          summary: "List tenant-scoped AI evidence traces",
           parameters: [
             { name: "projectId", in: "query", schema: { type: "string", format: "uuid" } },
             { name: "limit", in: "query", schema: { type: "integer", maximum: 100 } },
@@ -382,9 +412,9 @@ export function buildOpenApiDocument() {
       "/api/v1/ai-runs/{runId}": {
         get: {
           tags: ["AI quality"],
-          summary: "Inspect a run's sanitized call timeline and citations",
+          summary: "Inspect a run's sanitized timeline, evaluations, grounding coverage, artifact, and approval",
           parameters: [pathParam("runId")],
-          responses: { "200": jsonResponse("{ run, calls, citations }"), ...STD },
+          responses: { "200": jsonResponse("{ run, calls, evaluations, citations, artifact, approval, coverage }"), ...STD },
         },
       },
       "/api/v1/audit": {
@@ -444,6 +474,224 @@ export function buildOpenApiDocument() {
             "409": { description: "Job is not in a retryable state" },
             ...STD,
           },
+        },
+      },
+      "/api/v1/identity-connections": {
+        get: {
+          tags: ["Identity"],
+          summary: "List organization-scoped OIDC connections (requires org.manage_identity)",
+          responses: { "200": jsonResponse("{ connections }"), ...STD },
+        },
+        post: {
+          tags: ["Identity"],
+          summary: "Create an OIDC connection with an encrypted client secret",
+          requestBody: body(z.object({
+            slug: z.string(),
+            issuerUrl: z.string().url(),
+            clientId: z.string(),
+            clientSecret: z.string().optional(),
+            enabled: z.boolean().optional(),
+            jitEnabled: z.boolean().optional(),
+            allowedDomains: z.array(z.string()).optional(),
+            groupMappings: z.record(z.string(), z.string()).optional(),
+          })),
+          responses: { "201": jsonResponse("OIDC connection"), ...STD },
+        },
+      },
+      "/api/v1/identity-connections/{connectionId}": {
+        patch: {
+          tags: ["Identity"],
+          summary: "Update or rotate credentials for an OIDC connection",
+          parameters: [pathParam("connectionId")],
+          requestBody: body(z.object({
+            issuerUrl: z.string().url().optional(),
+            clientId: z.string().optional(),
+            clientSecret: z.string().optional(),
+            enabled: z.boolean().optional(),
+            jitEnabled: z.boolean().optional(),
+            allowedDomains: z.array(z.string()).optional(),
+            groupMappings: z.record(z.string(), z.string()).optional(),
+          })),
+          responses: { "200": jsonResponse("OIDC connection updated"), ...STD },
+        },
+        delete: {
+          tags: ["Identity"],
+          summary: "Disable an OIDC connection without deleting its audit history",
+          parameters: [pathParam("connectionId")],
+          responses: { "200": jsonResponse("OIDC connection disabled"), ...STD },
+        },
+      },
+      "/api/v1/scim-tokens": {
+        get: {
+          tags: ["Identity"],
+          summary: "List non-secret SCIM token metadata",
+          responses: { "200": jsonResponse("{ tokens }"), ...STD },
+        },
+        post: {
+          tags: ["Identity"],
+          summary: "Rotate/create an organization-scoped SCIM bearer token",
+          requestBody: body(z.object({ label: z.string().min(1), expiresAt: z.string().datetime().optional(), revokeTokenId: z.string().uuid().optional() })),
+          responses: { "201": jsonResponse("{ token, tokenMetadata }"), ...STD },
+        },
+      },
+      "/api/v1/scim-tokens/{tokenId}": {
+        delete: {
+          tags: ["Identity"],
+          summary: "Revoke a SCIM bearer token",
+          parameters: [pathParam("tokenId")],
+          responses: { "204": { description: "Token revoked" }, ...STD },
+        },
+      },
+      "/api/v1/webhooks": {
+        get: {
+          tags: ["Integrations"],
+          summary: "List organization-scoped webhook endpoints",
+          responses: { "200": jsonResponse("{ endpoints }"), ...STD },
+        },
+        post: {
+          tags: ["Integrations"],
+          summary: "Register a signed outbound webhook endpoint",
+          requestBody: body(z.object({ url: z.string().url(), eventTypes: z.array(z.string()).min(1) })),
+          responses: { "201": jsonResponse("{ endpoint, secret }"), ...STD },
+        },
+      },
+      "/api/v1/webhooks/{endpointId}": {
+        delete: {
+          tags: ["Integrations"],
+          summary: "Disable a webhook endpoint",
+          parameters: [pathParam("endpointId")],
+          responses: { "204": { description: "Endpoint disabled" }, ...STD },
+        },
+      },
+      "/api/v1/webhooks/{endpointId}/test": {
+        post: {
+          tags: ["Integrations"],
+          summary: "Queue a signed synthetic connectivity test through the durable job path",
+          parameters: [pathParam("endpointId")],
+          responses: { "202": jsonResponse("{ deliveryId, eventId, jobId }"), ...STD },
+        },
+      },
+      "/api/v1/webhooks/{endpointId}/deliveries": {
+        get: {
+          tags: ["Integrations"],
+          summary: "Read bounded webhook delivery history for one endpoint",
+          parameters: [pathParam("endpointId"), { name: "limit", in: "query", schema: { type: "integer", maximum: 100 } }],
+          responses: { "200": jsonResponse("{ deliveries }"), ...STD },
+        },
+      },
+      "/api/v1/webhooks/{endpointId}/rotate-secret": {
+        post: {
+          tags: ["Integrations"],
+          summary: "Rotate a webhook signing secret (plaintext shown once)",
+          parameters: [pathParam("endpointId")],
+          responses: { "200": jsonResponse("{ endpointId, secret }"), ...STD },
+        },
+      },
+      "/api/v1/retention-policy": {
+        get: {
+          tags: ["Security"],
+          summary: "Read the organization retention policy",
+          responses: { "200": jsonResponse("{ policy }"), ...STD },
+        },
+        put: {
+          tags: ["Security"],
+          summary: "Update bounded organization retention windows",
+          requestBody: body(z.object({
+            auditDays: z.number().int().optional(),
+            aiDetailDays: z.number().int().optional(),
+            completedJobDays: z.number().int().optional(),
+            webhookDeliveryDays: z.number().int().optional(),
+          })),
+          responses: { "200": jsonResponse("{ policy }"), ...STD },
+        },
+      },
+      "/api/v1/retention-policy/preview": {
+        get: {
+          tags: ["Security"],
+          summary: "Preview records selected by the current retention policy",
+          responses: { "200": jsonResponse("{ policy, cutoffs, counts }"), ...STD },
+        },
+      },
+      "/api/scim/v2/ServiceProviderConfig": {
+        get: {
+          tags: ["SCIM"],
+          summary: "SCIM 2.0 service provider capabilities",
+          security: [{ scimBearer: [] }],
+          responses: { "200": jsonResponse("SCIM ServiceProviderConfig") },
+        },
+      },
+      "/api/scim/v2/Users": {
+        get: {
+          tags: ["SCIM"],
+          summary: "List/filter provisioned users",
+          security: [{ scimBearer: [] }],
+          responses: { "200": jsonResponse("SCIM ListResponse") },
+        },
+        post: {
+          tags: ["SCIM"],
+          summary: "Provision a user",
+          security: [{ scimBearer: [] }],
+          responses: { "201": jsonResponse("SCIM User"), "409": { description: "Conflicting role mapping or duplicate user" } },
+        },
+      },
+      "/api/scim/v2/Users/{id}": {
+        get: {
+          tags: ["SCIM"],
+          summary: "Read a provisioned user",
+          security: [{ scimBearer: [] }],
+          parameters: [pathParam("id")],
+          responses: { "200": jsonResponse("SCIM User"), "404": { description: "User not found" } },
+        },
+        put: {
+          tags: ["SCIM"],
+          summary: "Replace a provisioned user",
+          security: [{ scimBearer: [] }],
+          parameters: [pathParam("id")],
+          responses: { "200": jsonResponse("SCIM User"), "412": { description: "ETag precondition failed" } },
+        },
+        patch: {
+          tags: ["SCIM"],
+          summary: "Patch a provisioned user",
+          security: [{ scimBearer: [] }],
+          parameters: [pathParam("id")],
+          responses: { "200": jsonResponse("SCIM User"), "412": { description: "ETag precondition failed" } },
+        },
+        delete: {
+          tags: ["SCIM"],
+          summary: "Deactivate a provisioned user",
+          security: [{ scimBearer: [] }],
+          parameters: [pathParam("id")],
+          responses: { "204": { description: "User deactivated" }, "412": { description: "ETag precondition failed" } },
+        },
+      },
+      "/api/scim/v2/Groups": {
+        get: {
+          tags: ["SCIM"],
+          summary: "List directory groups and mapped roles",
+          security: [{ scimBearer: [] }],
+          responses: { "200": jsonResponse("SCIM ListResponse") },
+        },
+        post: {
+          tags: ["SCIM"],
+          summary: "Create a directory group",
+          security: [{ scimBearer: [] }],
+          responses: { "201": jsonResponse("SCIM Group") },
+        },
+      },
+      "/api/scim/v2/Groups/{id}": {
+        get: {
+          tags: ["SCIM"],
+          summary: "Read a directory group",
+          security: [{ scimBearer: [] }],
+          parameters: [pathParam("id")],
+          responses: { "200": jsonResponse("SCIM Group"), "404": { description: "Group not found" } },
+        },
+        patch: {
+          tags: ["SCIM"],
+          summary: "Patch group membership with conflict-safe mapped roles",
+          security: [{ scimBearer: [] }],
+          parameters: [pathParam("id")],
+          responses: { "200": jsonResponse("SCIM Group"), "409": { description: "Conflicting mapped role" } },
         },
       },
     },

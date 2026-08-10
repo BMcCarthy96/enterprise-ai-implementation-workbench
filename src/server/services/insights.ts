@@ -18,7 +18,7 @@ export interface DecisionRow {
 }
 
 export interface JobRow {
-  type: "plan_generation" | "customer_update_digest" | "document_ingest";
+  type: "plan_generation" | "customer_update_digest" | "document_ingest" | "webhook_delivery";
   status: "queued" | "running" | "succeeded" | "failed" | "dead_letter";
   attempts: number;
   durationMs: number | null;

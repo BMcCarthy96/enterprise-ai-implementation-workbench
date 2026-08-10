@@ -33,8 +33,35 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-coverage
+          path: coverage/
+          retention-days: 14
       - run: npm run eval:offline
       - run: npm run eval:check
+      - run: npm run proof:check
+      - run: npm run proof:bundle
+      - name: Upload recruiter evidence bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recruiter-proof-bundle
+          path: artifacts/proof-bundle/
+          retention-days: 14
+      - name: Upload offline evidence scorecard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-eval-evidence
+          path: |
+            evals/scoreboard.json
+            evals/reports/latest.json
+            evals/reports/latest.md
+          retention-days: 14
       - run: npm --prefix infra install --no-audit --no-fund
       - run: npm --prefix infra run build
       - run: npm run infra:synth

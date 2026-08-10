@@ -4,6 +4,7 @@ import { enqueueJob } from "@/lib/aws/sqs";
 import { ApiError } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import { recordAudit } from "./audit";
+import { activeTraceContext, withSpan } from "@/lib/telemetry";
 
 export type JobType = (typeof schema.jobType.enumValues)[number];
 
@@ -44,11 +45,13 @@ function throwActivePlanConflict(error: unknown): never {
 
 /** Publish a committed job row and mark the delivery attempt durable. */
 export async function dispatchJob(jobId: string, delaySeconds = 0): Promise<void> {
-  await enqueueJob(jobId, delaySeconds);
-  await dbAdmin
-    .update(schema.jobs)
-    .set({ dispatchedAt: new Date() })
-    .where(and(eq(schema.jobs.id, jobId), eq(schema.jobs.status, "queued")));
+  return withSpan("job.dispatch", { "workbench.job_id_present": Boolean(jobId) }, async () => {
+    await enqueueJob(jobId, delaySeconds);
+    await dbAdmin
+      .update(schema.jobs)
+      .set({ dispatchedAt: new Date() })
+      .where(and(eq(schema.jobs.id, jobId), eq(schema.jobs.status, "queued")));
+  });
 }
 
 async function dispatchJobSafely(jobId: string): Promise<void> {
@@ -97,24 +100,28 @@ export async function createAndEnqueueJob(input: {
    *  triggered the job). */
   auditMetadata?: Record<string, unknown>;
 }): Promise<string> {
-  let job: { id: string };
-  try {
+  return withSpan("job.enqueue", { "workbench.job_type": input.type }, async () => {
+    let job: { id: string };
+    const traceContext = activeTraceContext();
+    try {
     [job] = await db
       .insert(schema.jobs)
       .values({
         orgId: input.orgId,
         projectId: input.projectId ?? null,
-        type: input.type,
-        payload: input.payload ?? {},
-        requestedBy: input.requestedBy ?? null,
+          type: input.type,
+          payload: input.payload ?? {},
+          requestedBy: input.requestedBy ?? null,
+          traceId: traceContext.traceId ?? null,
+          traceParent: traceContext.traceParent ?? null,
       })
       .returning({ id: schema.jobs.id });
-  } catch (error) {
-    if (input.type === "plan_generation") throwActivePlanConflict(error);
-    throw error;
-  }
+    } catch (error) {
+      if (input.type === "plan_generation") throwActivePlanConflict(error);
+      throw error;
+    }
 
-  await recordAudit({
+    await recordAudit({
     orgId: input.orgId,
     actorId: input.requestedBy,
     action: `job.enqueued`,
@@ -122,9 +129,10 @@ export async function createAndEnqueueJob(input: {
     subjectId: job.id,
     projectId: input.projectId,
     metadata: { type: input.type, ...input.auditMetadata },
+    });
+    await afterTransactionCommit(() => dispatchJobSafely(job.id));
+    return job.id;
   });
-  await afterTransactionCommit(() => dispatchJobSafely(job.id));
-  return job.id;
 }
 
 /** Re-enqueue a failed/dead-letter job (Ops page retry button). */

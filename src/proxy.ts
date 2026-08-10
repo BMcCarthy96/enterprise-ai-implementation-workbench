@@ -4,8 +4,13 @@ import { jwtVerify } from "jose";
 const PUBLIC_PATHS = [
   "/",
   "/login",
+  "/demo",
+  "/proof",
   "/api/auth/login",
+  "/api/auth/oidc",
   "/api/demo/session",
+  "/api/proof",
+  "/api/scim",
   "/api/openapi.json",
   "/api/health",
 ];

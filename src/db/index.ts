@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { env } from "@/lib/env";
+import { withSpan } from "@/lib/telemetry";
 import * as schema from "./schema";
 
 // Reuse the pool across Next.js hot reloads in dev to avoid connection leaks.
@@ -62,19 +63,21 @@ export async function withTenantTransaction<T>(
   callback: () => Promise<T>,
   userId?: string,
 ): Promise<T> {
-  const afterCommit: Array<() => Promise<void>> = [];
-  const result = await baseDb.transaction(async (tx) => {
-    return tenantStorage.run({ tx, afterCommit }, async () => {
-      await setTenantContext(orgId);
-      if (userId) await setContextValue("app.user_id", userId);
-      return callback();
+  return withSpan("tenant.transaction", { "workbench.org_present": Boolean(orgId), "workbench.user_present": Boolean(userId) }, async () => {
+    const afterCommit: Array<() => Promise<void>> = [];
+    const result = await baseDb.transaction(async (tx) => {
+      return tenantStorage.run({ tx, afterCommit }, async () => {
+        await setTenantContext(orgId);
+        if (userId) await setContextValue("app.user_id", userId);
+        return callback();
+      });
     });
+    // External side effects must not run until PostgreSQL has committed. This is
+    // especially important for SQS: a worker must never receive a pointer to a
+    // row that is still invisible on another database connection.
+    for (const effect of afterCommit) await effect();
+    return result;
   });
-  // External side effects must not run until PostgreSQL has committed. This is
-  // especially important for SQS: a worker must never receive a pointer to a
-  // row that is still invisible on another database connection.
-  for (const effect of afterCommit) await effect();
-  return result;
 }
 
 export async function withUserTransaction<T>(

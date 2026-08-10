@@ -1,5 +1,6 @@
 import {
   customType,
+  boolean,
   index,
   integer,
   jsonb,
@@ -11,6 +12,9 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { DemoScenarioRefs } from "@/lib/tour";
+import type { AiCallValidationEvidence } from "@/lib/ai/evidence";
+import type { Role } from "@/lib/auth/rbac";
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -89,6 +93,7 @@ export const jobType = pgEnum("job_type", [
   "plan_generation",
   "customer_update_digest",
   "document_ingest",
+  "webhook_delivery",
 ]);
 
 export const jobStatus = pgEnum("job_status", [
@@ -167,7 +172,13 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
-  passwordHash: text("password_hash").notNull(),
+  externalId: text("external_id"),
+  // A SCIM user is owned by the organization whose bearer token created it.
+  // Keeping that association separate from the globally-unique email/external
+  // identifiers prevents an org-scoped SCIM lookup from crossing tenants.
+  scimOrgId: uuid("scim_org_id").references(() => organizations.id, { onDelete: "set null" }),
+  // SSO/SCIM-provisioned users may not have a local password.
+  passwordHash: text("password_hash"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -184,6 +195,8 @@ export const memberships = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     role: membershipRole("role").notNull(),
+    active: boolean("active").notNull().default(true),
+    sessionVersion: integer("session_version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -192,6 +205,162 @@ export const memberships = pgTable(
     uniqueIndex("memberships_user_org_unique").on(t.userId, t.orgId),
     index("memberships_org_idx").on(t.orgId),
   ],
+);
+
+export const identityConnections = pgTable(
+  "identity_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    issuerUrl: text("issuer_url").notNull(),
+    clientId: text("client_id").notNull(),
+    clientSecretCiphertext: text("client_secret_ciphertext"),
+    encryptionKeyVersion: integer("encryption_key_version").notNull().default(1),
+    enabled: boolean("enabled").notNull().default(false),
+    jitEnabled: boolean("jit_enabled").notNull().default(false),
+    allowedDomains: jsonb("allowed_domains").$type<string[]>().notNull().default([]),
+    groupMappings: jsonb("group_mappings").$type<Record<string, Role>>().notNull().default({}),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("identity_connections_org_slug_unique").on(t.orgId, t.slug),
+    index("identity_connections_org_idx").on(t.orgId),
+  ],
+);
+
+export const externalIdentities = pgTable(
+  "external_identities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    connectionId: uuid("connection_id").notNull().references(() => identityConnections.id, { onDelete: "cascade" }),
+    subject: text("subject").notNull(),
+    email: text("email").notNull(),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("external_identities_connection_subject_unique").on(t.connectionId, t.subject),
+    index("external_identities_org_idx").on(t.orgId),
+    index("external_identities_user_idx").on(t.userId),
+  ],
+);
+
+export const scimTokens = pgTable(
+  "scim_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("scim_tokens_org_idx").on(t.orgId)],
+);
+
+export const directoryGroups = pgTable(
+  "directory_groups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    externalId: text("external_id").notNull(),
+    displayName: text("display_name").notNull(),
+    mappedRole: membershipRole("mapped_role"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("directory_groups_org_external_unique").on(t.orgId, t.externalId),
+    index("directory_groups_org_idx").on(t.orgId),
+  ],
+);
+
+export const webhookEventTypes = [
+  "approval.decided",
+  "task.status_changed",
+  "customer_update.published",
+  "job.dead_letter",
+  "webhook.test",
+] as const;
+export type WebhookEventType = (typeof webhookEventTypes)[number];
+
+export const webhookEndpoints = pgTable(
+  "webhook_endpoints",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    secretCiphertext: text("secret_ciphertext").notNull(),
+    encryptionKeyVersion: integer("encryption_key_version").notNull().default(1),
+    eventTypes: jsonb("event_types").$type<WebhookEventType[]>().notNull().default([]),
+    enabled: boolean("enabled").notNull().default(true),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("webhook_endpoints_org_idx").on(t.orgId)],
+);
+
+export const webhookDeliveries = pgTable(
+  "webhook_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    endpointId: uuid("endpoint_id").notNull().references(() => webhookEndpoints.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    payload: jsonb("payload").notNull(),
+    status: text("status").notNull().default("queued"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    responseStatus: integer("response_status"),
+    responseBody: text("response_body"),
+    lastError: text("last_error"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("webhook_deliveries_org_created_idx").on(t.orgId, t.createdAt),
+    index("webhook_deliveries_endpoint_idx").on(t.endpointId),
+    uniqueIndex("webhook_deliveries_event_endpoint_unique").on(t.endpointId, t.eventId),
+  ],
+);
+
+export const retentionPolicies = pgTable(
+  "retention_policies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull().unique().references(() => organizations.id, { onDelete: "cascade" }),
+    auditDays: integer("audit_days").notNull().default(365),
+    aiDetailDays: integer("ai_detail_days").notNull().default(90),
+    completedJobDays: integer("completed_job_days").notNull().default(30),
+    webhookDeliveryDays: integer("webhook_delivery_days").notNull().default(30),
+    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("retention_policies_org_idx").on(t.orgId)],
+);
+
+export const retentionRuns = pgTable(
+  "retention_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("running"),
+    counts: jsonb("counts").$type<Record<string, number>>().notNull().default({}),
+    error: text("error"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("retention_runs_org_started_idx").on(t.orgId, t.startedAt)],
 );
 
 export const demoWorkspaces = pgTable(
@@ -217,6 +386,9 @@ export const demoWorkspaces = pgTable(
     maxGenerationJobs: integer("max_generation_jobs").notNull().default(3),
     maxUploads: integer("max_uploads").notNull().default(2),
     maxStorageBytes: integer("max_storage_bytes").notNull().default(10 * 1024 * 1024),
+    // Nullable by design: older isolated workspaces use the route-only tour
+    // fallback until scheduled cleanup removes them.
+    scenarioRefs: jsonb("scenario_refs").$type<DemoScenarioRefs | null>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -588,6 +760,8 @@ export const jobs = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     durationMs: integer("duration_ms"),
+    traceId: text("trace_id"),
+    traceParent: text("trace_parent"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -664,6 +838,7 @@ export const aiCalls = pgTable(
     latencyMs: integer("latency_ms"),
     outcome: aiCallOutcome("outcome").notNull(),
     errorKind: text("error_kind"),
+    validationEvidence: jsonb("validation_evidence").$type<AiCallValidationEvidence | null>(),
     providerRequestId: text("provider_request_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -672,5 +847,34 @@ export const aiCalls = pgTable(
   (t) => [
     index("ai_calls_run_sequence_idx").on(t.aiRunId, t.sequence),
     index("ai_calls_org_created_idx").on(t.orgId, t.createdAt),
+  ],
+);
+
+export const aiRunEvaluations = pgTable(
+  "ai_run_evaluations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    aiRunId: uuid("ai_run_id")
+      .notNull()
+      .references(() => aiRuns.id, { onDelete: "cascade" }),
+    checkName: text("check_name").notNull(),
+    category: text("category").notNull(),
+    gateLevel: text("gate_level").notNull(),
+    score: numeric("score", { precision: 8, scale: 6 }).notNull(),
+    threshold: numeric("threshold", { precision: 8, scale: 6 }).notNull(),
+    passed: boolean("passed").notNull().default(false),
+    detail: text("detail").notNull(),
+    evaluatorVersion: text("evaluator_version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("ai_run_evaluations_unique").on(t.aiRunId, t.checkName, t.evaluatorVersion),
+    index("ai_run_evaluations_org_idx").on(t.orgId, t.createdAt),
+    index("ai_run_evaluations_run_idx").on(t.aiRunId),
   ],
 );

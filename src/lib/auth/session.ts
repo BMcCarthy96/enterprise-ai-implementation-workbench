@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
+import { withSpan } from "@/lib/telemetry";
 import type { Role } from "./rbac";
 
 /**
@@ -20,6 +21,9 @@ export interface SessionPayload {
   orgId: string;
   orgName: string;
   role: Role;
+  /** Added for immediate SCIM deprovisioning; legacy sessions omit these. */
+  membershipId?: string;
+  sessionVersion?: number;
   demoWorkspaceId?: string;
   demoExpiresAt?: string;
 }
@@ -42,12 +46,14 @@ export async function createSessionToken(
 export async function verifySessionToken(
   token: string,
 ): Promise<SessionPayload | null> {
-  try {
-    const { payload } = await jwtVerify(token, secretKey());
-    return payload as unknown as SessionPayload;
-  } catch {
-    return null;
-  }
+  return withSpan("auth.verify_session", { "workbench.session_present": Boolean(token) }, async () => {
+    try {
+      const { payload } = await jwtVerify(token, secretKey());
+      return payload as unknown as SessionPayload;
+    } catch {
+      return null;
+    }
+  });
 }
 
 export async function getSession(): Promise<SessionPayload | null> {
