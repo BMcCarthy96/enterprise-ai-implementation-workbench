@@ -6,8 +6,13 @@ import { can } from "@/lib/auth/rbac";
 import { getInsights } from "@/server/services/insights";
 import { PageHeader } from "@/components/PageHeader";
 import { MetricBars } from "@/components/MetricBar";
+import scoreboardJson from "../../../../evals/scoreboard.json";
+import { EvalScoreboardSchema } from "@/lib/ai/evidence";
 
 export const dynamic = "force-dynamic";
+
+const scoreboard = EvalScoreboardSchema.parse(scoreboardJson);
+const scoreboardIsStaleAtRender = Date.now();
 
 const STATUS_TONES: Record<string, string> = {
   done: "bg-emerald-500",
@@ -76,13 +81,15 @@ export default async function InsightsPage() {
 
   const pctTone = (v: number | null) =>
     v == null ? "text-gray-900" : v >= 80 ? "text-emerald-600" : v >= 50 ? "text-amber-600" : "text-red-600";
+  const scoreboardGeneratedAt = new Date(scoreboard.generatedAt);
+  const scoreboardIsStale = scoreboardIsStaleAtRender - scoreboardGeneratedAt.getTime() > 30 * 86400000;
 
   return (
     <div>
       <PageHeader
         title="Insights"
         subtitle="AI output quality and delivery health across your organization"
-        actions={<Link href="/ai-runs" className="btn-secondary">Inspect AI runs</Link>}
+        actions={<Link href="/ai-runs" className="btn-secondary">Open evidence center</Link>}
       />
 
       {/* AI quality — the eval story */}
@@ -187,6 +194,21 @@ export default async function InsightsPage() {
             </table>
           </div>
         </Panel>
+      </div>
+
+      <div className="mb-8 card p-5" data-testid="offline-regression-scorecard">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div><h2 className="text-sm font-semibold text-gray-900">Offline regression suite</h2><p className="mt-1 text-xs text-gray-500">Separate from live telemetry: committed cases, prompt variants, and baseline comparison.</p></div>
+          <span className={`badge ${scoreboard.hardGatesPassed ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{scoreboard.hardGatesPassed ? "Hard gates passed" : "Needs attention"}</span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div className="rounded-lg bg-slate-50 p-3"><p className="text-lg font-semibold text-slate-900">{scoreboard.caseCount}</p><p className="text-xs text-gray-500">cases</p></div>
+          <div className="rounded-lg bg-slate-50 p-3"><p className="text-lg font-semibold text-slate-900">{scoreboard.variantCount ?? Object.keys(scoreboard.variants).length}</p><p className="text-xs text-gray-500">prompt variants</p></div>
+          <div className="rounded-lg bg-slate-50 p-3"><p className="text-lg font-semibold text-slate-900">{scoreboard.provider}</p><p className="text-xs text-gray-500">provider</p></div>
+          <div className="rounded-lg bg-slate-50 p-3"><p className="text-lg font-semibold text-slate-900">{scoreboard.baseline?.compared ? `${(scoreboard.baseline.maxAggregateRegression * 100).toFixed(1)}pt` : "—"}</p><p className="text-xs text-gray-500">max baseline delta</p></div>
+          <div className="rounded-lg bg-slate-50 p-3"><p className="text-lg font-semibold text-slate-900">{scoreboardGeneratedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p><p className="text-xs text-gray-500">generated{scoreboardIsStale ? " · stale" : " · current"}</p></div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">{Object.entries(scoreboard.variants).map(([variant, value]) => <span key={variant} className="rounded-full border border-gray-200 px-3 py-1 text-xs text-gray-600">{variant} · {Math.round(value.schemaValidRate * 100)}% schema · {Math.round((value.citationValidity ?? 0) * 100)}% grounding</span>)}</div>
       </div>
 
       {/* Delivery health */}

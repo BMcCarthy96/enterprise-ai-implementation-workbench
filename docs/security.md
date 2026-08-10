@@ -40,6 +40,13 @@ Direct email, phone, and common account/identifier patterns are replaced with re
 
 The public demo creates a synthetic organization per visitor/IP hash for 60 minutes. It caps active workspaces, AI generations, uploads, file size, total storage, and aggregate demo model spend. A quota check takes a transaction-scoped global admission lock, validates the workspace quota, and reserves an estimated model cost before a job is enqueued; completion releases that reservation while actual provider usage remains in `ai_runs`. Exhausted limits return `429 DEMO_LIMIT_REACHED` or `503 DEMO_BUDGET_EXHAUSTED`. An hourly cleanup job removes expired organizations and their exact S3 prefixes.
 
-## Explicit non-goals
+## Lifecycle, incident, and certification boundary
 
-OCR for scanned PDFs, real customer data, enterprise SSO, statistically conclusive prompt experiments, and unrestricted public exports are out of scope for this release. The README and UI label offline mock metrics separately from reported provider usage.
+The lifecycle and control evidence are summarized in the repository
+[security policy](../SECURITY.md) and [operations runbook](operations.md).
+OIDC/SCIM are implemented as provider-neutral standards surfaces; direct SAML,
+vendor-specific directory adapters, and OCR for scanned PDFs remain out of
+scope. The public demo contains synthetic data only. Nothing in this project
+constitutes SOC 2, HIPAA, ISO 27001, FedRAMP, or production uptime
+certification. Offline mock metrics remain visibly separate from reported
+provider usage.

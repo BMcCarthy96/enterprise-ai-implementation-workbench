@@ -1,0 +1,21 @@
+name: Lighthouse portfolio budgets
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Deployed synthetic environment URL"
+        required: true
+        type: string
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx --yes @lhci/cli@0.14.x autorun
+        env:
+          LHCI_BUILD_CONTEXT__BASE_URL: ${{ inputs.base_url }}

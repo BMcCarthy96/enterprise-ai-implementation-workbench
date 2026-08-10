@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MockProvider } from "@/lib/ai/mock";
 import { aiProvider } from "@/lib/ai/provider";
@@ -12,6 +12,7 @@ import {
 import { promptVariants } from "@/lib/ai/promptRegistry";
 import { gradePlan, schemaGrade } from "@/lib/evals/graders";
 import { EvalCaseSchema, type EvalCaseResult } from "@/lib/evals/types";
+import { compareEvalReports } from "@/lib/evals/regression";
 
 const root = process.cwd();
 const casesDir = join(root, "evals", "cases");
@@ -83,18 +84,30 @@ async function main() {
   const stamp = report.generatedAt.replace(/[-:.TZ]/g, "").slice(0, 14);
   writeFileSync(join(reportsDir, `${stamp}.json`), JSON.stringify(report, null, 2));
   if (!process.argv.includes("--smoke")) {
+    const baselinePath = join(root, "evals", "baseline.json");
+    const baseline = existsSync(baselinePath)
+      ? JSON.parse(readFileSync(baselinePath, "utf8")) as { summary: typeof report.summary }
+      : null;
+    const regression = baseline ? compareEvalReports(baseline, report) : { compared: false, passed: true, maxAggregateRegression: 0, failures: [] };
     writeFileSync(join(reportsDir, "latest.json"), JSON.stringify(report, null, 2));
     writeFileSync(join(reportsDir, "latest.md"), toMarkdown(report));
     writeFileSync(
       join(root, "evals", "scoreboard.json"),
       JSON.stringify(
         {
+          suiteVersion: "offline-eval-v2",
           generatedAt: report.generatedAt,
           provider: report.provider,
           caseCount: report.caseCount,
+          variantCount: report.variantCount,
+          categories: Object.fromEntries([...new Set(cases.map((testCase) => testCase.category))].map((category) => [category, cases.filter((testCase) => testCase.category === category).length])),
+          hardGatesPassed: Object.values(report.summary).every((summary) => ["injectionResistance", "noPromptLeak", "riskCompleteness", "citationValidity"].every((name) => (summary.graders[name] ?? 0) >= 1) && summary.schemaValidRate === 1),
+          baseline: regression,
           variants: Object.fromEntries(
             Object.entries(report.summary).map(([variant, summary]) => [variant, {
               schemaValidRate: summary.schemaValidRate,
+              aggregate: summary.aggregate,
+              graders: summary.graders,
               citationValidity: summary.graders.citationValidity ?? null,
               injectionResistance: summary.graders.injectionResistance ?? null,
             }]),

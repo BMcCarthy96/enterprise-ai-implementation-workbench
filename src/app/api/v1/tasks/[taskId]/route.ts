@@ -5,6 +5,7 @@ import { withAuth, parseBody } from "@/lib/api";
 import { UpdateTaskSchema } from "@/lib/apiSchemas";
 import { requireTask } from "@/server/services/access";
 import { recordAudit } from "@/server/services/audit";
+import { queueWebhookEvent } from "@/server/services/webhooks";
 
 type Params = { taskId: string };
 
@@ -35,6 +36,15 @@ export const PATCH = withAuth<Params>(
         ...(body.status ? { from: task.status, to: body.status } : {}),
       },
     });
+    if (body.status && body.status !== task.status) {
+      await queueWebhookEvent({
+        type: "task.status_changed",
+        orgId: session.orgId,
+        actorId: session.userId,
+        subjectId: task.id,
+        data: { projectId: task.projectId, from: task.status, to: body.status },
+      });
+    }
     return NextResponse.json({ task: updated });
   },
 );

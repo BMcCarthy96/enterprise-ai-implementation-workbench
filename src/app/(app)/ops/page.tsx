@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
@@ -15,10 +15,12 @@ export default async function OpsPage() {
   if (!can(session.role, "ops.view")) redirect("/dashboard");
   const canRetry = can(session.role, "ops.retry_jobs");
 
-  const jobs = await withTenantTransaction(
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000);
+  const operations = await withTenantTransaction(
     session.orgId,
-    () =>
-      db
+    async () => {
+      const jobs = await db
         .select({
           job: schema.jobs,
           projectName: schema.projects.name,
@@ -27,9 +29,21 @@ export default async function OpsPage() {
         .leftJoin(schema.projects, eq(schema.jobs.projectId, schema.projects.id))
         .where(eq(schema.jobs.orgId, session.orgId))
         .orderBy(desc(schema.jobs.createdAt))
-        .limit(100),
+        .limit(100);
+      const deliveries = await db.query.webhookDeliveries.findMany({
+        where: and(eq(schema.webhookDeliveries.orgId, session.orgId), gt(schema.webhookDeliveries.createdAt, thirtyDaysAgo)),
+        columns: { status: true, createdAt: true },
+      });
+      const lastRetentionRun = await db.query.retentionRuns.findFirst({
+        where: eq(schema.retentionRuns.orgId, session.orgId),
+        orderBy: [desc(schema.retentionRuns.startedAt)],
+        columns: { status: true, startedAt: true, finishedAt: true, counts: true },
+      });
+      return { jobs, deliveries, lastRetentionRun };
+    },
     session.userId,
   );
+  const { jobs, deliveries, lastRetentionRun } = operations;
 
   const total = jobs.length;
   const succeeded = jobs.filter((j) => j.job.status === "succeeded").length;
@@ -42,6 +56,13 @@ export default async function OpsPage() {
   const avgMs = durations.length
     ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
     : 0;
+  const queuedJobs = jobs.filter((item) => item.job.status === "queued");
+  const oldestQueuedSeconds = queuedJobs.length
+    ? Math.max(...queuedJobs.map((item) => Math.round((now.getTime() - item.job.createdAt.getTime()) / 1000)))
+    : 0;
+  const deliveredWebhooks = deliveries.filter((delivery) => delivery.status === "delivered").length;
+  const queueObserved = oldestQueuedSeconds ? "Oldest " + oldestQueuedSeconds + "s" : "No queued jobs";
+  const generationObserved = total ? Math.round((succeeded / total) * 100) + "% recent" : "No sample";
 
   return (
     <div>
@@ -76,6 +97,36 @@ export default async function OpsPage() {
           <p className="mt-1 text-sm text-gray-500">Failed / dead-letter</p>
         </div>
       </div>
+
+      <section className="card mb-6 border-amber-200 bg-amber-50/50 p-5" aria-labelledby="slo-targets">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="slo-targets" className="text-sm font-semibold text-gray-900">Reliability targets</h2>
+            <p className="mt-1 text-xs text-gray-600">Targets are intentionally separated from observed data; no uptime or DR result is claimed by this demo.</p>
+          </div>
+          <span className="badge badge-amber">Operating target</span>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {[
+            ["Availability", "99.5% / 30d", "Not measured"],
+            ["Non-AI API p95", "< 750 ms", "Tracing enabled"],
+            ["Queue start", "95% < 60s", queueObserved],
+            ["Generation terminal", "95% success", generationObserved],
+            ["DR objective", "24h RPO · 4h RTO", "Not exercised"],
+          ].map(([label, target, observed]) => (
+            <div key={label} className="rounded-lg border border-amber-100 bg-white/80 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+              <p className="mt-1 text-sm font-semibold text-gray-900">{target}</p>
+              <p className="mt-1 text-xs text-gray-500">Observed: {observed}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-600">
+          <span>Webhook delivery: {deliveries.length ? Math.round((deliveredWebhooks / deliveries.length) * 100) + "% in 30d" : "no sample"}</span>
+          <span>Retention ledger: {lastRetentionRun?.status ?? "not run"}</span>
+          <span>Trace correlation: persisted on queued jobs</span>
+        </div>
+      </section>
 
       {jobs.length === 0 ? (
         <EmptyState

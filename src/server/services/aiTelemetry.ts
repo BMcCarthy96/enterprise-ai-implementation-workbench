@@ -6,6 +6,8 @@ import {
   pricingVersionForModel,
 } from "@/lib/ai/pricing";
 import type { CompletionResult } from "@/lib/ai/provider";
+import type { AiCallValidationEvidence } from "@/lib/ai/evidence";
+import { withSpan } from "@/lib/telemetry";
 
 export type AiCallResult = Pick<CompletionResult, "model" | "usage" | "providerRequestId">;
 
@@ -50,6 +52,7 @@ export async function recordAiCall(input: {
   latencyMs: number;
   outcome: CallOutcome;
   errorKind?: string | null;
+  validationEvidence?: AiCallValidationEvidence | null;
   redactionCount?: number;
 }): Promise<void> {
   const model = input.result?.model ?? input.model ?? null;
@@ -75,6 +78,7 @@ export async function recordAiCall(input: {
     latencyMs: input.latencyMs,
     outcome: input.outcome,
     errorKind: input.errorKind ?? null,
+    validationEvidence: input.validationEvidence ?? null,
     providerRequestId: input.result?.providerRequestId ?? null,
   });
 }
@@ -149,12 +153,37 @@ export async function instrumentAiCall<T extends CompletionResult>(input: {
   promptVersion?: string | null;
   complete: () => Promise<T>;
   classifyError?: (error: unknown) => string;
-  validate?: (result: T) => CallOutcome;
+  validate?: (result: T) =>
+    | CallOutcome
+    | { outcome: CallOutcome; evidence?: AiCallValidationEvidence; errorKind?: string | null };
+  redactionCount?: number;
+}): Promise<T> {
+  return withSpan(
+    "ai.call",
+    { "workbench.ai_operation": input.operation, "workbench.provider": input.provider },
+    () => instrumentAiCallInternal(input),
+  );
+}
+
+async function instrumentAiCallInternal<T extends CompletionResult>(input: {
+  aiRunId: string;
+  orgId: string;
+  sequence: number;
+  operation: Operation;
+  provider: string;
+  promptVersion?: string | null;
+  complete: () => Promise<T>;
+  classifyError?: (error: unknown) => string;
+  validate?: (result: T) =>
+    | CallOutcome
+    | { outcome: CallOutcome; evidence?: AiCallValidationEvidence; errorKind?: string | null };
   redactionCount?: number;
 }): Promise<T> {
   const startedAt = Date.now();
   try {
     const result = await input.complete();
+    const validation = input.validate?.(result) ?? "valid";
+    const validationResult = typeof validation === "string" ? { outcome: validation } : validation;
     await recordAiCall({
       aiRunId: input.aiRunId,
       orgId: input.orgId,
@@ -164,7 +193,9 @@ export async function instrumentAiCall<T extends CompletionResult>(input: {
       promptVersion: input.promptVersion,
       result,
       latencyMs: Date.now() - startedAt,
-      outcome: input.validate?.(result) ?? "valid",
+      outcome: validationResult.outcome,
+      errorKind: validationResult.errorKind,
+      validationEvidence: validationResult.evidence,
       redactionCount: input.redactionCount,
     });
     return result;

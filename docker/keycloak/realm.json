@@ -1,0 +1,34 @@
+{
+  "realm": "workbench",
+  "enabled": true,
+  "displayName": "Enterprise AI Workbench (local)",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "clients": [
+    {
+      "clientId": "workbench-web",
+      "name": "Workbench local web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "workbench-local-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:3000/api/auth/oidc/callback"],
+      "webOrigins": ["http://localhost:3000"]
+    }
+  ],
+  "users": [
+    {
+      "username": "sso.manager@northwind.dev",
+      "email": "sso.manager@northwind.dev",
+      "firstName": "SSO",
+      "lastName": "Manager",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "demo1234", "temporary": false }],
+      "groups": ["/Implementation Managers"]
+    }
+  ],
+  "groups": [{ "name": "Implementation Managers" }]
+}

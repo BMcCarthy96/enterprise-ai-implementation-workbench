@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { compareEvalReports } from "@/lib/evals/regression";
 
 type Report = {
   summary: Record<string, { aggregate: number; schemaValidRate: number; graders: Record<string, number> }>;
@@ -15,20 +16,9 @@ if (!existsSync(baselinePath) || !existsSync(candidatePath)) {
 
 const baseline = JSON.parse(readFileSync(baselinePath, "utf8")) as Report;
 const candidate = JSON.parse(readFileSync(candidatePath, "utf8")) as Report;
-const failures: string[] = [];
-for (const [variant, current] of Object.entries(candidate.summary)) {
-  const prior = baseline.summary[variant];
-  if (!prior) continue;
-  if (current.schemaValidRate < 1) failures.push(`${variant}: schema validity is below 100%`);
-  for (const hardGate of ["injectionResistance", "noPromptLeak", "riskCompleteness", "citationValidity"]) {
-    if ((current.graders[hardGate] ?? 0) < 1) failures.push(`${variant}: ${hardGate} hard gate failed`);
-  }
-  if (current.aggregate < prior.aggregate - 0.02) {
-    failures.push(`${variant}: aggregate regressed by more than two points`);
-  }
-}
-if (failures.length) {
-  console.error(failures.join("\n"));
+const comparison = compareEvalReports(baseline, candidate);
+if (!comparison.passed) {
+  console.error(comparison.failures.join("\n"));
   process.exit(1);
 }
 console.log("Eval regression check passed.");

@@ -26,7 +26,8 @@ Create one Secrets Manager JSON secret before deploying the stack. The CDK funct
 {
   "DATABASE_URL": "postgres://runtime:<password>@<pooled-neon-host>/workbench?sslmode=require",
   "DATABASE_ADMIN_URL": "postgres://admin:<password>@<direct-neon-host>:5432/workbench?sslmode=require",
-  "SESSION_SECRET": "<at-least-32-character-random-value>"
+  "SESSION_SECRET": "<at-least-32-character-random-value>",
+  "APP_ENCRYPTION_KEY": "<base64-key-material>"
 }
 ```
 
@@ -103,6 +104,30 @@ For a Vercel-hosted UI, use a short-lived OIDC/role-assumption bridge or keep th
 | Plan model | Deterministic mock | Bedrock Claude Converse | `AI_PROVIDER` |
 | Embeddings | Deterministic mock vectors | Bedrock Titan Text Embeddings v2 | `EMBEDDING_PROVIDER` |
 | Demo cleanup | Service call | Scheduled Lambda + S3 prefix cleanup | Same service |
+
+## Enterprise identity, webhooks, and observability
+
+Add APP_ENCRYPTION_KEY to the runtime secret JSON. It is used for per-record
+AES-256-GCM encryption of OIDC client secrets and webhook signing secrets.
+Configure an organization connection through the identity admin API, then
+point the OIDC provider's callback to /api/auth/oidc/callback. Keep JIT off
+unless the organization explicitly accepts just-in-time provisioning; the
+SCIM-first path provides deterministic group-to-role lifecycle.
+
+Webhook endpoints are organization-scoped and should target a verified HTTPS
+receiver. The app performs DNS/private-network checks at registration and
+delivery, signs each event with a timestamped HMAC, and sends only a minimal
+versioned envelope. Retention preview and policy APIs are org-admin only.
+
+For the web runtime, register the Next.js instrumentation entrypoint and send
+OTLP to a Vercel-compatible collector when available. Lambda worker spans and
+CloudWatch/X-Ray remain the authoritative runtime view; the persisted job trace
+context joins both sides without putting tenant ids or content in telemetry.
+
+Public demo guardrails are intentionally conservative: one live generation per
+isolated workspace, a one-dollar daily application cap, and the existing
+fifteen-dollar monthly AWS budget. Seeded evidence remains the fallback when a
+provider circuit breaker is open.
 
 ## Security and operations checklist
 

@@ -39,7 +39,7 @@ A multi-tenant internal platform for software implementation teams: it turns mes
 **Visibility & reporting**
 - [**SLA & delivery risk**](#sla--delivery-risk) on the dashboard — at-risk/breached projects with the signal that tripped, plus **per-project threshold overrides**
 - [**Insights & evals**](#insights--evals) — approval rate, generation success rate, latency, rejection-reason breakdown, and quality grouped by prompt version
-- **AI Runs** — sanitized, clickable timelines for retrieval, generation, repair, guardrails, tokens, pricing, latency, and normalized citations
+- **AI Evidence Center** — sanitized, clickable evidence packets for retrieval, generation, repair, automated checks, grounding coverage, approval decisions, tokens, pricing, and latency
 - [**Customer-facing timeline**](#customer-facing-status-timeline) — external progress view built from an allowlist of customer-safe sources, so internal review history can't leak
 - [**Global search**](#global-search) — ⌘K palette over projects, requirements, and customers, role-gated server-side
 - **Append-only audit log** of every mutation, filterable in-app and exportable as CSV
@@ -48,7 +48,7 @@ A multi-tenant internal platform for software implementation teams: it turns mes
 - **Multi-tenant** by construction: every session carries an `orgId`, every lookup is org-scoped, and PostgreSQL RLS repeats that guarantee inside a transaction-local `app.org_id`
 - **RBAC** across four roles, enforced on API routes, server components, and navigation alike
 - [**Reliability**](#reliability--operability): exponential-backoff retries, dead-letter parking with one-click retry, atomic job claiming, structured logs, health probe
-- **Guarded public demo** — an ephemeral synthetic workspace with TTL, quotas, spend circuit breakers, and no shared credentials
+- **Guarded public demo** — an ephemeral synthetic workspace with TTL, quotas, spend circuit breakers, four seeded persona identities, and a persistent one-click role switcher; no shared credentials or production impersonation
 - [**OpenAPI 3.1 docs**](#api) generated from the same zod schemas the handlers validate with — they cannot drift from behavior
 - Runs **100% locally** on Docker + LocalStack; the switch to real AWS is env vars, not code
 
@@ -170,7 +170,7 @@ Sign in with any demo account (password `demo1234`):
 | `customer@brightlane.dev` | Customer Stakeholder |
 | `admin@cascade.dev` | Admin of a second tenant (isolation demo) |
 
-**Suggested demo:** sign in as `engineer` → open *Patient Onboarding Portal* → Plan tab → *Generate implementation plan* (watch the job go queued → running on the Ops page) → sign in as `manager` → Approvals → review & approve → Board tab now has the materialized tasks → Updates tab → *Draft customer update* → approve it → sign in as `customer@brightlane.dev` to see exactly what an external stakeholder sees.
+**Suggested demo:** use the landing page’s **Launch interactive demo** button. The isolated workspace opens Recruiter Mode once with a checklist that walks through the dashboard health view → grounded Order Intake plan → repaired AI trace → Claims approval → live Patient Onboarding generation → board materialization → dead-letter recovery → customer update. Minimize/reopen the dock at any time, or use **Reset** to provision a fresh scenario. For persona-specific access, sign in as `engineer` → open *Patient Onboarding Portal* → Plan tab → *Generate implementation plan* (watch the job go queued → running on the Ops page) → sign in as `manager` → Approvals → review & approve → Board tab now has the materialized tasks → Updates tab → *Draft customer update* → approve it → sign in as `customer@brightlane.dev` to see exactly what an external stakeholder sees.
 
 ## Global search
 
@@ -180,13 +180,13 @@ A **⌘K / Ctrl+K command palette** (in the sidebar of every authenticated page)
 
 The REST surface is documented as OpenAPI 3.1 generated **from the same zod schemas the handlers validate with** — docs can't drift from behavior: [`GET /api/openapi.json`](http://localhost:3000/api/openapi.json).
 
-Auth is a `workbench_session` httpOnly cookie (HS256 JWT, 12h). Async operations (plan generation, digests) return `202 { jobId }`; poll `GET /api/v1/jobs`.
+Auth is a `workbench_session` httpOnly cookie (HS256 JWT, 12h). Async operations (plan generation, digests) return `202 { jobId }`; poll `GET /api/v1/jobs`. The isolated demo's internal `POST /api/demo/role` endpoint switches only among seeded persona memberships and returns a safe in-app redirect; it is not a production impersonation API.
 
 ## Testing & CI
 
 ```bash
 npm test          # tenant access, plan schema/guardrails, prompt envelope, backoff, sessions, provider adapters, retrieval/redaction, insights, calibration, and workflow helpers
-npm run test:e2e  # Playwright: auth, RBAC, seeded flows, feedback loop + diff + auto-regenerate, bulk approvals, customer timeline leak check, SLA risk + per-project overrides, insights, global search, health, CSV export, OpenAPI contract
+npm run test:e2e  # Playwright: auth, RBAC, demo persona switching, seeded flows, AI evidence packet, feedback loop + diff + auto-regenerate, bulk approvals, customer timeline leak check, SLA risk + per-project overrides, insights, global search, health, CSV export, OpenAPI contract
 E2E_WORKER=1 npx playwright test  # + full async generate→approve→board flow (needs worker running)
 ```
 
@@ -201,7 +201,11 @@ An **Insights** dashboard (`/insights`, admin + manager only) turns the audit an
 - **Quality by prompt version:** approval outcomes grouped by the `promptVersion` stamped on each plan, so output drift is attributable as prompts evolve
 - **Delivery health:** projects by stage, tasks by status, requirements/plans/updates volume
 
-The **AI Runs** surface (`/ai-runs`) is the inspectable evidence layer: each plan or digest trace lists retrieval embeddings, initial generation, validation/repair outcomes, token usage source (`reported` vs `estimated`), versioned pricing, latency, and normalized citations. It intentionally does not persist raw production prompts or document chunks.
+The **AI Evidence Center** (`/ai-runs`) is the inspectable evidence layer: each plan or digest trace links retrieval metadata, initial generation, validation/repair outcomes, persisted hard-gate and quality-signal evaluations, requirement/citation coverage, the generated artifact, and its human approval decision. Token usage is labeled `reported` vs `estimated`, pricing is versioned, and raw production prompts, source text, and model output are intentionally excluded from retained evidence. Historical runs without evaluation rows are labeled as legacy rather than silently backfilled.
+
+The isolated demo exposes the same workflow through four synthetic identities — Operations Admin, Implementation Manager, Solutions Engineer, and Customer Stakeholder. The role bar changes the actual session user and re-runs normal RBAC checks, so a recruiter can show both what each persona can do and what it cannot access in one click. Switching never extends the demo TTL, and reset always returns to the manager persona.
+
+The Insights page also separates live telemetry from the committed **offline regression suite**. The scorecard shows case count, categories, prompt variants, hard-gate status, baseline delta, provider, suite version, and freshness (stale after 30 days).
 
 The offline eval lane covers 15 synthetic cases across three prompt variants, including paired retrieval-on/retrieval-off fixtures, and writes a committed baseline to `evals/baseline.json`:
 
@@ -271,6 +275,30 @@ scripts/             # seed script, LocalStack init
 tests/               # unit (Vitest) + e2e (Playwright)
 docs/                # architecture, AWS deployment, case study
 ```
+
+## Enterprise credibility surfaces
+
+The public proof hub at /proof is both a recruiter-friendly narrative and a
+machine-readable evidence map. Claims are labeled Verified, Implemented,
+Target, or Planned and link to demo checkpoints, tests, APIs, artifacts, ADRs,
+and runbooks. The printable case study is at /proof/case-study and the safe
+manifest is at /api/proof/manifest.
+
+For local identity and observability, use the optional Docker profiles:
+
+    docker compose --profile enterprise up -d keycloak
+    docker compose --profile observability up -d
+
+If another local stack already publishes an OTLP port (for example Jaeger on
+`4318`), override only the host port while keeping container-to-container
+traffic unchanged:
+
+    WORKBENCH_OTEL_HTTP_PORT=14318 docker compose --profile observability up -d
+
+Keycloak provides a reproducible OIDC reference realm; Grafana, Tempo,
+Prometheus, and the OpenTelemetry Collector make trace/metric wiring visible
+without cloud credentials. Run npm run proof:check to validate the registry
+before sharing a build.
 
 ## Lessons learned
 

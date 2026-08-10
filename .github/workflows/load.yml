@@ -1,0 +1,27 @@
+name: Synthetic load profile
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Deployed synthetic environment URL"
+        required: true
+        type: string
+      profile:
+        description: "ci (5 users/30s) or release (25 users/5m)"
+        required: true
+        default: ci
+        type: choice
+        options: [ci, release]
+
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: grafana/setup-k6-action@v1
+      - uses: actions/checkout@v4
+      - name: Run synthetic load profile
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          K6_PROFILE: ${{ inputs.profile }}
+        run: k6 run load/k6-smoke.js

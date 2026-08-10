@@ -13,6 +13,8 @@ import {
   runDocumentIngestionJob,
 } from "@/server/services/documentIngestion";
 import { reconcileDemoGeneration } from "@/server/services/demo";
+import { deliverWebhookJob, queueWebhookEvent } from "@/server/services/webhooks";
+import { withSpan } from "@/lib/telemetry";
 
 /**
  * Background worker: long-polls SQS for job pointers and executes them.
@@ -43,6 +45,7 @@ const HANDLERS: Record<
   plan_generation: runPlanGenerationJob,
   customer_update_digest: runDigestJob,
   document_ingest: runDocumentIngestionJob,
+  webhook_delivery: deliverWebhookJob,
 };
 
 function demoReservationUsd(payload: unknown): number {
@@ -54,6 +57,7 @@ function demoReservationUsd(payload: unknown): number {
 }
 
 export async function processJob(jobId: string): Promise<void> {
+  return withSpan("worker.process_job", { "workbench.job_id": jobId }, async () => {
   // A worker receives only the job id. Resolve its organization through the
   // admin connection first, then perform every runtime query inside the
   // tenant transaction so production RLS is active even before the first
@@ -144,6 +148,20 @@ export async function processJob(jobId: string): Promise<void> {
           metadata: { type: job.type, attempts, error: message },
         }),
       );
+      // Notify configured integrations after the dead-letter state and audit
+      // row are durable. Delivery itself is another durable job, so a
+      // transient webhook outage cannot change the worker outcome.
+      await withTenantTransaction(job.orgId, () =>
+        queueWebhookEvent({
+          orgId: job.orgId,
+          actorId: job.requestedBy ?? undefined,
+          subjectId: job.id,
+          type: "job.dead_letter",
+          data: { type: job.type, attempts, error: message.slice(0, 500) },
+        }),
+      ).catch((error) => {
+        jobLog.warn({ error: String(error) }, "dead-letter webhook enqueue failed");
+      });
     } else {
       const delay = backoffSeconds(attempts);
       jobLog.warn(
@@ -160,6 +178,7 @@ export async function processJob(jobId: string): Promise<void> {
       await dispatchJob(job.id, delay);
     }
   }
+  });
 }
 
 let shuttingDown = false;

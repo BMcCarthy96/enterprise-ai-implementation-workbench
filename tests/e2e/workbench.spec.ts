@@ -9,6 +9,97 @@ async function login(page: Page, email: string) {
   await page.waitForURL("**/dashboard");
 }
 
+test.describe("interactive recruiter demo", () => {
+  test("launches with delivery, governance, AI, and operations evidence", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Launch interactive demo" }).click();
+    await page.waitForURL("**/dashboard");
+
+    await expect(page.getByRole("link", { name: "3 Active projects" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "2 Pending approvals" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "6 Open tasks" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "1 Failed jobs" })).toBeVisible();
+    await expect(page.getByText("1 task blocked 8d+", { exact: true })).toBeVisible();
+    await expect(page.getByText("Patient Onboarding Portal", { exact: true })).toBeVisible();
+
+    await page.goto("/approvals");
+    await expect(page.getByText("Order Intake Automation — UAT Readiness")).toBeVisible();
+    await expect(page.getByText("Implementation plan v1")).toBeVisible();
+
+    await page.goto("/ai-runs");
+    await expect(page.getByRole("table").getByText("repaired", { exact: true })).toBeVisible();
+    await expect(page.getByText("$0.0150", { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: /[0-9a-f]{8}/i }).first().click();
+    await expect(page.getByRole("heading", { name: "AI evidence packet" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Automated checks" })).toBeVisible();
+    await expect(page.getByText("Evidence retention boundary")).toBeVisible();
+  });
+
+  test("opens once, minimizes, resumes, and persists recruiter mode progress", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Launch interactive demo" }).click();
+    await page.waitForURL("**/dashboard");
+
+    const panel = page.getByTestId("recruiter-mode-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText("Tell the implementation story")).toBeVisible();
+    await panel.getByRole("button", { name: "Minimize product tour" }).click();
+    await expect(page.getByTestId("tour-open")).toBeVisible();
+    await page.getByTestId("tour-open").click();
+    await expect(panel).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId("tour-open")).toBeVisible();
+  });
+
+  test("switches among seeded demo personas while preserving RBAC", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Launch interactive demo" }).click();
+    await page.waitForURL("**/dashboard");
+    const bar = page.getByTestId("demo-role-bar");
+    await expect(bar).toBeVisible();
+    await expect(bar.getByTestId("demo-role-implementation_manager")).toHaveAttribute("aria-pressed", "true");
+
+    await bar.getByTestId("demo-role-solutions_engineer").click();
+    await expect(bar.getByTestId("demo-role-solutions_engineer")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "AI Evidence" })).toHaveCount(0);
+    expect((await page.request.get("/api/v1/ai-runs")).status()).toBe(403);
+
+    await bar.getByTestId("demo-role-customer_stakeholder").click();
+    await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Operations" })).toHaveCount(0);
+
+    await bar.getByTestId("demo-role-implementation_manager").click();
+    await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "AI Evidence" })).toBeVisible();
+  });
+
+  test("requires confirmation and issues a fresh demo on reset", async ({ page }) => {
+    await page.goto("/");
+    const launch = page.waitForResponse("**/api/demo/session");
+    await page.getByRole("button", { name: "Launch interactive demo" }).click();
+    const launchResponse = await launch;
+    const firstWorkspace = ((await launchResponse.json()) as { workspaceId: string }).workspaceId;
+    await page.waitForURL("**/dashboard");
+
+    const unconfirmed = await page.request.post("/api/demo/reset", { data: {} });
+    expect(unconfirmed.status()).toBe(400);
+    const reset = await page.request.post("/api/demo/reset", { data: { confirmed: true } });
+    expect(reset.status()).toBe(200);
+    const secondWorkspace = ((await reset.json()) as { workspaceId: string }).workspaceId;
+    expect(secondWorkspace).not.toBe(firstWorkspace);
+  });
+
+  test("keeps recruiter mode usable on a narrow viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 900 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Launch interactive demo" }).click();
+    await page.waitForURL("**/dashboard");
+    await expect(page.getByTestId("recruiter-mode-panel")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await expect(page.locator("#portfolio-health-heading")).toBeVisible();
+  });
+});
+
 test.describe("authentication & RBAC", () => {
   test("rejects bad credentials", async ({ page }) => {
     await page.goto("/login");
@@ -152,7 +243,7 @@ test.describe("seeded delivery data", () => {
     await page.getByRole("link", { name: "Operations" }).click();
     await expect(page.getByText("Success rate")).toBeVisible();
     await expect(page.getByText("dead letter").first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry" }).first()).toBeVisible();
   });
 
   test("insights page surfaces AI quality and delivery metrics", async ({ page }) => {
@@ -166,7 +257,7 @@ test.describe("seeded delivery data", () => {
     ).toBeVisible();
     await expect(page.getByText("Plan approval rate")).toBeVisible();
     await expect(page.getByText("Quality by prompt version")).toBeVisible();
-    await expect(page.getByText("plan-v1.0")).toBeVisible();
+    await expect(page.getByRole("cell", { name: "plan-v1.0" })).toBeVisible();
     // The seeded rejection surfaces in the reason-code breakdown.
     await expect(page.getByText("wrong sequencing")).toBeVisible();
     await expect(

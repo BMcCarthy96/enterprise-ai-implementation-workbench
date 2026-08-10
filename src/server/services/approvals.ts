@@ -5,6 +5,8 @@ import { ApiError } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import { createAndEnqueueJob } from "./jobs";
 import { recordAudit } from "./audit";
+import { queueWebhookEvent } from "./webhooks";
+import { withSpan } from "@/lib/telemetry";
 
 export interface DecisionInput {
   approvalId: string;
@@ -46,6 +48,16 @@ export function wantsRegeneration(opts: {
  * quality loop.
  */
 export async function decideApproval(
+  input: DecisionInput,
+): Promise<DecisionResult> {
+  return withSpan(
+    "approval.decide",
+    { "workbench.approval_decision": input.decision },
+    () => decideApprovalInternal(input),
+  );
+}
+
+async function decideApprovalInternal(
   input: DecisionInput,
 ): Promise<DecisionResult> {
   const approval = await db.query.approvals.findFirst({
@@ -92,6 +104,27 @@ export async function decideApproval(
       note: input.note ?? null,
     },
   });
+  await queueWebhookEvent({
+    type: "approval.decided",
+    orgId: input.orgId,
+    actorId: input.decidedBy,
+    subjectId: approval.subjectId,
+    data: {
+      approvalId: approval.id,
+      subjectType: approval.subjectType,
+      decision: input.decision,
+      reasonCode: input.reasonCode ?? null,
+    },
+  });
+  if (approval.subjectType === "customer_update" && input.decision === "approved") {
+    await queueWebhookEvent({
+      type: "customer_update.published",
+      orgId: input.orgId,
+      actorId: input.decidedBy,
+      subjectId: approval.subjectId,
+      data: { approvalId: approval.id },
+    });
+  }
 
   // Closed feedback loop: on a plan rejection the reviewer can opt to have a
   // revised plan generated immediately. The worker's generation path already

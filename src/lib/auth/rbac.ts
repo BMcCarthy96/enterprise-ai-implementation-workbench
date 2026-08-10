@@ -19,6 +19,9 @@ export type Role = (typeof ROLES)[number];
 
 export const PERMISSIONS = [
   "org.manage_members",
+  "org.manage_identity",
+  "org.manage_integrations",
+  "org.manage_retention",
   "customers.manage",
   "projects.manage",
   "requirements.manage",

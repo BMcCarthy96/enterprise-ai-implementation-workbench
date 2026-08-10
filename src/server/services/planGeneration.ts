@@ -23,7 +23,13 @@ import {
   startAiRun,
 } from "./aiTelemetry";
 import { retrieveProjectSources, retrievalQuery, type RetrievedSource } from "./retrieval";
-import { sourceRefsFromPlan, validatePlanGuardrails } from "./planGuardrails";
+import { PlanGuardrailError, sourceRefsFromPlan, validatePlanGuardrails } from "./planGuardrails";
+import { withSpan } from "@/lib/telemetry";
+import {
+  buildPlanEvaluationRows,
+  normalizedValidationEvidence,
+  type AiCallValidationEvidence,
+} from "@/lib/ai/evidence";
 
 /** Strip markdown fences some models wrap around JSON despite instructions. */
 export function extractJson(text: string): string {
@@ -37,10 +43,51 @@ export function extractJson(text: string): string {
   return candidate.slice(start, end + 1);
 }
 
-function validatePlan(raw: string, input: PlanPromptInput): PlanContent {
-  const content = PlanContentSchema.parse(JSON.parse(extractJson(raw)));
-  validatePlanGuardrails(input, content);
-  return content;
+interface PlanAssessment {
+  content?: PlanContent;
+  evidence: AiCallValidationEvidence;
+  errorKind?: string;
+  errorMessage?: string;
+}
+
+export function assessPlanOutput(raw: string, input: PlanPromptInput): PlanAssessment {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJson(raw));
+  } catch {
+    return {
+      evidence: normalizedValidationEvidence({ schemaValid: false, guardrailPassed: false, failureCodes: ["JSON_PARSE_FAILED"] }),
+      errorKind: "JSON_PARSE_FAILED",
+      errorMessage: "Model output was not a JSON object",
+    };
+  }
+  const parsedContent = PlanContentSchema.safeParse(parsed);
+  if (!parsedContent.success) {
+    return {
+      evidence: normalizedValidationEvidence({
+        schemaValid: false,
+        guardrailPassed: false,
+        failureCodes: ["SCHEMA_VALIDATION_FAILED"],
+        issuePaths: parsedContent.error.issues.map((issue) => issue.path.join(".")),
+      }),
+      errorKind: "SCHEMA_VALIDATION_FAILED",
+      errorMessage: "Plan did not match the output schema",
+    };
+  }
+  try {
+    validatePlanGuardrails(input, parsedContent.data);
+  } catch (error) {
+    const code = error instanceof PlanGuardrailError ? error.code : "GUARDRAIL_FAILED";
+    return {
+      evidence: normalizedValidationEvidence({ schemaValid: true, guardrailPassed: false, failureCodes: [code] }),
+      errorKind: code,
+      errorMessage: error instanceof Error ? error.message.slice(0, 240) : "Plan guardrail failed",
+    };
+  }
+  return {
+    content: parsedContent.data,
+    evidence: normalizedValidationEvidence({ schemaValid: true, guardrailPassed: true, failureCodes: [] }),
+  };
 }
 
 /**
@@ -52,6 +99,18 @@ function validatePlan(raw: string, input: PlanPromptInput): PlanContent {
  * NOT created here — that only happens after a human approves the plan.
  */
 export async function runPlanGenerationJob(job: {
+  id: string;
+  orgId: string;
+  projectId: string | null;
+}): Promise<void> {
+  return withSpan(
+    "ai.plan_generation",
+    { "workbench.ai_provider": process.env.AI_PROVIDER ?? "mock" },
+    () => runPlanGenerationJobInternal(job),
+  );
+}
+
+async function runPlanGenerationJobInternal(job: {
   id: string;
   orgId: string;
   projectId: string | null;
@@ -133,15 +192,19 @@ export async function runPlanGenerationJob(job: {
   let retrievedSources: RetrievedSource[] = [];
   try {
     const retrievalStartedAt = Date.now();
-    const retrieval = await retrieveProjectSources({
-      orgId: job.orgId,
-      projectId: project.id,
-      query: retrievalQuery({
-        projectName: project.name,
-        projectDescription: project.description,
-        requirements: reqs,
+    const retrieval = await withSpan(
+      "ai.retrieval",
+      { "workbench.source_count_requested": reqs.length },
+      () => retrieveProjectSources({
+        orgId: job.orgId,
+        projectId: project.id,
+        query: retrievalQuery({
+          projectName: project.name,
+          projectDescription: project.description,
+          requirements: reqs,
+        }),
       }),
-    });
+    );
     retrievedSources = retrieval.sources;
     if (retrieval.embedding) {
       sequence += 1;
@@ -199,21 +262,22 @@ export async function runPlanGenerationJob(job: {
               : undefined,
         }),
       validate: (result) => {
-        try {
-          validatePlan(result.text, promptInput);
-          return "valid";
-        } catch {
-          return "invalid";
-        }
+        const assessment = assessPlanOutput(result.text, promptInput);
+        return {
+          outcome: assessment.content ? "valid" : "invalid",
+          errorKind: assessment.errorKind,
+          evidence: assessment.evidence,
+        };
       },
     });
 
     model = first.model;
-    try {
-      content = validatePlan(first.text, promptInput);
-    } catch (err) {
+    const firstAssessment = assessPlanOutput(first.text, promptInput);
+    if (firstAssessment.content) {
+      content = firstAssessment.content;
+    } else {
       repaired = true;
-      log.warn({ err: String(err) }, "plan validation failed; attempting repair");
+      log.warn({ errorKind: firstAssessment.errorKind }, "plan validation failed; attempting repair");
       const repair = await instrumentAiCall({
         aiRunId: run.id,
         orgId: job.orgId,
@@ -228,22 +292,26 @@ export async function runPlanGenerationJob(job: {
             user:
               userPrompt +
               "\n\n" +
-              buildRepairPrompt(first.text, String(err).slice(0, 2000)),
+              buildRepairPrompt(first.text, firstAssessment.errorMessage ?? "Plan validation failed"),
             structuredOutput:
               promptVariant.version === "plan-v2.0"
                 ? { name: "implementation_plan", schema: PLAN_OUTPUT_JSON_SCHEMA }
                 : undefined,
           }),
         validate: (result) => {
-          try {
-            validatePlan(result.text, promptInput);
-            return "valid";
-          } catch {
-            return "invalid";
-          }
+          const assessment = assessPlanOutput(result.text, promptInput);
+          return {
+            outcome: assessment.content ? "valid" : "invalid",
+            errorKind: assessment.errorKind,
+            evidence: assessment.evidence,
+          };
         },
       });
-      content = validatePlan(repair.text, promptInput);
+      const repairAssessment = assessPlanOutput(repair.text, promptInput);
+      if (!repairAssessment.content) {
+        throw new Error(repairAssessment.errorMessage ?? "Repaired plan failed validation");
+      }
+      content = repairAssessment.content;
       model = repair.model;
     }
   } catch (error) {
@@ -257,6 +325,11 @@ export async function runPlanGenerationJob(job: {
       orderBy: desc(schema.plans.version),
     });
     const version = (latest?.version ?? 0) + 1;
+    const evaluationRows = buildPlanEvaluationRows(promptInput, content);
+    const failedHardGate = evaluationRows.find((row) => row.gateLevel === "hard_gate" && !row.passed);
+    if (failedHardGate) {
+      throw new Error(`AI evidence hard gate failed: ${failedHardGate.checkName}`);
+    }
 
     const [plan] = await db
       .insert(schema.plans)
@@ -290,6 +363,19 @@ export async function runPlanGenerationJob(job: {
       };
     });
     if (citationRows.length) await db.insert(schema.planCitations).values(citationRows);
+
+    await db.insert(schema.aiRunEvaluations).values(evaluationRows.map((row) => ({
+      orgId: job.orgId,
+      aiRunId: run.id,
+      checkName: row.checkName,
+      category: row.category,
+      gateLevel: row.gateLevel,
+      score: row.score.toFixed(6),
+      threshold: row.threshold.toFixed(6),
+      passed: row.passed,
+      detail: row.detail,
+      evaluatorVersion: row.evaluatorVersion,
+    })));
 
     await db.insert(schema.approvals).values({
       orgId: job.orgId,

@@ -12,6 +12,7 @@ import {
 import { PlanContentSchema } from "@/lib/ai/planSchema";
 import { PROMPT_VERSION } from "@/lib/ai/planSchema";
 import { mockEmbedding } from "@/lib/ai/embeddings";
+import { buildPlanEvaluationRows } from "@/lib/ai/evidence";
 
 /**
  * Seeds two demo tenants so the app opens looking like a working business
@@ -72,6 +73,15 @@ async function main() {
       orgId: u.org,
       role: u.role,
     });
+  }
+  for (const organization of [northwind, cascade]) {
+    await db.insert(schema.retentionPolicies).values({ orgId: organization.id });
+    await db.insert(schema.directoryGroups).values([
+      { orgId: organization.id, externalId: organization.slug + "-admins", displayName: "Workbench Admins", mappedRole: "org_admin" },
+      { orgId: organization.id, externalId: organization.slug + "-managers", displayName: "Implementation Managers", mappedRole: "implementation_manager" },
+      { orgId: organization.id, externalId: organization.slug + "-engineers", displayName: "Solutions Engineers", mappedRole: "solutions_engineer" },
+      { orgId: organization.id, externalId: organization.slug + "-customers", displayName: "Customer Stakeholders", mappedRole: "customer_stakeholder" },
+    ]);
   }
   const admin = userIds["admin@northwind.dev"];
   const manager = userIds["manager@northwind.dev"];
@@ -259,6 +269,13 @@ async function main() {
       latencyMs: 1800,
       outcome: "invalid",
       errorKind: "schema_validation",
+      validationEvidence: {
+        evaluatorVersion: "evidence-v1",
+        schemaValid: false,
+        guardrailPassed: false,
+        failureCodes: ["SCHEMA_VALIDATION_FAILED"],
+        issuePaths: ["milestones[0].tasks[0].requirementIds"],
+      },
       createdAt: traceStarted,
     },
     {
@@ -276,6 +293,12 @@ async function main() {
       pricingVersion: null,
       latencyMs: 550,
       outcome: "valid",
+      validationEvidence: {
+        evaluatorVersion: "evidence-v1",
+        schemaValid: true,
+        guardrailPassed: true,
+        failureCodes: [],
+      },
       createdAt: traceFinished,
     },
   ]);
@@ -386,6 +409,25 @@ async function main() {
     chunkId: sourceChunk.id,
     location: "brightlane-order-intake-brief.md · Implementation brief",
   });
+  const seedEvaluations = buildPlanEvaluationRows(
+    {
+      ...planInput,
+      sources: [{ ref: "S1", documentName: "brightlane-order-intake-brief.md", pageNumber: null, heading: "Implementation brief", content: sourceText }],
+    },
+    planContent,
+  );
+  await db.insert(schema.aiRunEvaluations).values(seedEvaluations.map((evaluation) => ({
+    orgId: northwind.id,
+    aiRunId: seedRun.id,
+    checkName: evaluation.checkName,
+    category: evaluation.category,
+    gateLevel: evaluation.gateLevel,
+    score: evaluation.score.toFixed(6),
+    threshold: evaluation.threshold.toFixed(6),
+    passed: evaluation.passed,
+    detail: evaluation.detail,
+    evaluatorVersion: evaluation.evaluatorVersion,
+  })));
 
   console.log("Materializing milestones & tasks with in-flight statuses...");
   const taskStatusPlan: Array<Array<(typeof schema.taskStatus.enumValues)[number]>> = [

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError, type ZodType } from "zod";
-import { withTenantTransaction } from "@/db";
+import { and, eq } from "drizzle-orm";
+import { db, schema, withTenantTransaction } from "@/db";
 import { getSession, type SessionPayload } from "@/lib/auth/session";
 import { can, type Permission } from "@/lib/auth/rbac";
 import { logger } from "@/lib/logger";
+import { withSpan } from "@/lib/telemetry";
 
 export class ApiError extends Error {
   constructor(
@@ -53,6 +55,28 @@ export function withAuth<P = Record<string, never>>(
           { status: 401 },
         );
       }
+      if (session.membershipId && session.sessionVersion != null) {
+        const membershipId = session.membershipId;
+        const sessionVersion = session.sessionVersion;
+        const membership = await withTenantTransaction(
+          session.orgId,
+          () =>
+            db.query.memberships.findFirst({
+              where: and(
+                eq(schema.memberships.id, membershipId),
+                eq(schema.memberships.orgId, session.orgId),
+                eq(schema.memberships.userId, session.userId),
+              ),
+            }),
+          session.userId,
+        );
+        if (!membership || !membership.active || membership.sessionVersion !== sessionVersion) {
+          return NextResponse.json(
+            { error: "Your organization access has changed; sign in again", requestId },
+            { status: 401 },
+          );
+        }
+      }
       if (permission && !can(session.role, permission)) {
         log.warn(
           { userId: session.userId, role: session.role, permission },
@@ -64,9 +88,15 @@ export function withAuth<P = Record<string, never>>(
         );
       }
       const params = route ? await route.params : ({} as P);
-      const res = await withTenantTransaction(session.orgId, () =>
-        handler(req, { session, requestId, log }, params),
-        session.userId,
+      const res = await withSpan(
+        "api.request",
+        { "http.method": req.method, "http.route": req.nextUrl.pathname, "workbench.role": session.role },
+        () =>
+          withTenantTransaction(
+            session.orgId,
+            () => handler(req, { session, requestId, log }, params),
+            session.userId,
+          ),
       );
       return res;
     } catch (err) {

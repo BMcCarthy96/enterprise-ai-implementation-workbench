@@ -59,8 +59,11 @@ export async function POST(req: NextRequest) {
   const membership = await withUserTransaction(user.id, () =>
     db
       .select({
+        membershipId: schema.memberships.id,
         orgId: schema.memberships.orgId,
         role: schema.memberships.role,
+        active: schema.memberships.active,
+        sessionVersion: schema.memberships.sessionVersion,
         orgName: schema.organizations.name,
       })
       .from(schema.memberships)
@@ -79,7 +82,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { orgId, orgName, role } = membership[0];
+  const { membershipId, orgId, orgName, role, active, sessionVersion } = membership[0];
+  if (!active) {
+    return NextResponse.json(
+      { error: "Your organization access is suspended" },
+      { status: 403 },
+    );
+  }
   const token = await createSessionToken({
     userId: user.id,
     email: user.email,
@@ -87,6 +96,8 @@ export async function POST(req: NextRequest) {
     orgId,
     orgName,
     role,
+    membershipId,
+    sessionVersion,
   });
 
   await withTenantTransaction(orgId, () =>
