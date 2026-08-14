@@ -1,9 +1,11 @@
 import "dotenv/config";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { hostname } from "node:os";
+import { randomUUID } from "node:crypto";
 import { db, dbAdmin, schema, withTenantTransaction } from "@/db";
 import { deleteMessage, receiveJobs } from "@/lib/aws/sqs";
 import { logger } from "@/lib/logger";
-import { backoffSeconds, dispatchJob, dispatchUndeliveredJobs } from "@/server/services/jobs";
+import { backoffSeconds, dispatchJob, dispatchUndeliveredJobs, reclaimExpiredJobs } from "@/server/services/jobs";
 import { recordAudit } from "@/server/services/audit";
 import { runPlanGenerationJob } from "@/server/services/planGeneration";
 import { runDigestJob } from "@/server/services/digest";
@@ -15,6 +17,7 @@ import {
 import { reconcileDemoGeneration } from "@/server/services/demo";
 import { deliverWebhookJob, queueWebhookEvent } from "@/server/services/webhooks";
 import { withSpan } from "@/lib/telemetry";
+import { registerOTel } from "@vercel/otel";
 
 /**
  * Background worker: long-polls SQS for job pointers and executes them.
@@ -24,14 +27,28 @@ import { withSpan } from "@/lib/telemetry";
  * - Failures increment attempts and re-enqueue with exponential backoff
  *   (5s, 10s, 20s ... capped) until maxAttempts, then park as dead_letter.
  * - Dead-letter jobs are surfaced on the Ops page with a manual retry action.
- * - An atomic queued→running transition makes duplicate SQS deliveries
- *   harmless (at-least-once delivery is expected, not exceptional).
+ * - An atomic queued→running transition plus a lease/heartbeat makes duplicate
+ *   SQS deliveries harmless and lets a later worker reclaim a crashed claim.
  *
  * Locally this runs via `npm run worker`; on AWS the same code ships as an
  * ECS service or an SQS-triggered Lambda.
  */
 
 const log = logger.child({ component: "worker" });
+const LEASE_MS = 60_000;
+const HEARTBEAT_MS = 15_000;
+const WORKER_ID = `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
+
+let telemetryRegistered = false;
+function registerWorkerTelemetry() {
+  if (telemetryRegistered || process.env.OTEL_SDK_DISABLED === "true") return;
+  const endpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+  if (!endpoint && process.env.WORKBENCH_OTEL_ENABLED !== "true") return;
+  registerOTel({ serviceName: process.env.OTEL_SERVICE_NAME ?? "enterprise-ai-workbench-worker" });
+  telemetryRegistered = true;
+}
+
+registerWorkerTelemetry();
 
 const HANDLERS: Record<
   (typeof schema.jobType.enumValues)[number],
@@ -70,14 +87,29 @@ export async function processJob(jobId: string): Promise<void> {
     return;
   }
 
-  // Atomically claim the job; skips duplicates and manually-cancelled work.
+  // Atomically claim the job. A queued job is new work; an expired running
+  // lease is recoverable work from a worker that crashed after claiming.
+  const now = new Date();
   const claimed = await withTenantTransaction(candidate.orgId, () =>
-    db
-      .update(schema.jobs)
-      .set({ status: "running", startedAt: new Date() })
-      .where(
-        sql`${schema.jobs.id} = ${jobId} AND ${schema.jobs.status} = 'queued'`,
-      )
+    db.update(schema.jobs)
+      .set({
+        status: "running",
+        startedAt: now,
+        heartbeatAt: now,
+        leaseOwner: WORKER_ID,
+        leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
+        attempts: sql`${schema.jobs.attempts} + 1`,
+      })
+      .where(and(
+        eq(schema.jobs.id, jobId),
+        or(
+          eq(schema.jobs.status, "queued"),
+          and(
+            eq(schema.jobs.status, "running"),
+            or(isNull(schema.jobs.leaseExpiresAt), lt(schema.jobs.leaseExpiresAt, now)),
+          ),
+        ),
+      ))
       .returning(),
   );
   if (claimed.length === 0) {
@@ -85,8 +117,22 @@ export async function processJob(jobId: string): Promise<void> {
     return;
   }
   const job = claimed[0];
-  const jobLog = log.child({ jobId, type: job.type, attempt: job.attempts + 1 });
+  const attempt = job.attempts;
+  await withTenantTransaction(job.orgId, () => db.insert(schema.jobAttempts).values({
+    jobId: job.id,
+    orgId: job.orgId,
+    attempt,
+    workerId: WORKER_ID,
+    traceId: job.traceId,
+  }));
+  const jobLog = log.child({ jobId, type: job.type, attempt, workerId: WORKER_ID });
   const started = Date.now();
+  const heartbeat = setInterval(() => {
+    void withTenantTransaction(job.orgId, () => db.update(schema.jobs)
+      .set({ heartbeatAt: new Date(), leaseExpiresAt: new Date(Date.now() + LEASE_MS) })
+      .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.leaseOwner, WORKER_ID))))
+      .catch((error) => jobLog.warn({ error: String(error) }, "job heartbeat failed"));
+  }, HEARTBEAT_MS);
 
   try {
     const reservedUsd = demoReservationUsd(job.payload);
@@ -96,12 +142,17 @@ export async function processJob(jobId: string): Promise<void> {
         .update(schema.jobs)
         .set({
           status: "succeeded",
-          attempts: job.attempts + 1,
           finishedAt: new Date(),
           durationMs: Date.now() - started,
           lastError: null,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          heartbeatAt: new Date(),
         })
-        .where(eq(schema.jobs.id, job.id));
+        .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.leaseOwner, WORKER_ID)));
+      await db.update(schema.jobAttempts)
+        .set({ status: "succeeded", finishedAt: new Date(), durationMs: Date.now() - started })
+        .where(and(eq(schema.jobAttempts.jobId, job.id), eq(schema.jobAttempts.attempt, attempt)));
     });
     if (reservedUsd) {
       await reconcileDemoGeneration({ orgId: job.orgId, reservedUsd }).catch((error) => {
@@ -110,7 +161,7 @@ export async function processJob(jobId: string): Promise<void> {
     }
     jobLog.info({ durationMs: Date.now() - started }, "job succeeded");
   } catch (err) {
-    const attempts = job.attempts + 1;
+    const attempts = job.attempts;
     const message = err instanceof Error ? err.message : String(err);
     const exhausted = attempts >= job.maxAttempts;
 
@@ -126,8 +177,14 @@ export async function processJob(jobId: string): Promise<void> {
           finishedAt: new Date(),
           durationMs: Date.now() - started,
           lastError: message,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          heartbeatAt: new Date(),
         })
-        .where(eq(schema.jobs.id, job.id));
+        .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.leaseOwner, WORKER_ID)));
+      await db.update(schema.jobAttempts)
+        .set({ status: exhausted ? "dead_letter" : "failed", finishedAt: new Date(), durationMs: Date.now() - started, error: message })
+        .where(and(eq(schema.jobAttempts.jobId, job.id), eq(schema.jobAttempts.attempt, attempt)));
     });
 
     if (exhausted) {
@@ -172,11 +229,13 @@ export async function processJob(jobId: string): Promise<void> {
       await withTenantTransaction(job.orgId, async () => {
         await db
           .update(schema.jobs)
-          .set({ status: "queued", dispatchedAt: null })
-          .where(eq(schema.jobs.id, job.id));
+          .set({ status: "queued", dispatchedAt: null, leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null })
+          .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.status, "failed")));
       });
       await dispatchJob(job.id, delay);
     }
+  } finally {
+    clearInterval(heartbeat);
   }
   });
 }
@@ -190,6 +249,8 @@ async function main() {
 
   while (!shuttingDown) {
     try {
+      const reclaimed = await reclaimExpiredJobs();
+      if (reclaimed) log.info({ reclaimed }, "reclaimed expired job leases");
       const repaired = await dispatchUndeliveredJobs();
       if (repaired.dispatched) {
         log.info(repaired, "repaired undelivered job pointers");

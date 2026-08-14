@@ -241,12 +241,15 @@ async function main() {
     provider: "mock",
     model: "mock",
     promptVersion: PROMPT_VERSION,
+    dataOrigin: "fixture",
     status: "succeeded",
     finalOutcome: "repaired",
     inputTokens: 1200,
     outputTokens: 900,
-    costUsd: "0.01500000",
-    pricingVersion: "config-v1",
+    // Synthetic fixture: do not present an invented provider cost as a live
+    // spend measurement.
+    costUsd: null,
+    pricingVersion: null,
     latencyMs: 2350,
     startedAt: traceStarted,
     finishedAt: traceFinished,

@@ -120,9 +120,12 @@ delivery, signs each event with a timestamped HMAC, and sends only a minimal
 versioned envelope. Retention preview and policy APIs are org-admin only.
 
 For the web runtime, register the Next.js instrumentation entrypoint and send
-OTLP to a Vercel-compatible collector when available. Lambda worker spans and
-CloudWatch/X-Ray remain the authoritative runtime view; the persisted job trace
-context joins both sides without putting tenant ids or content in telemetry.
+OTLP to a Vercel-compatible collector when available. The shared worker also
+registers the OpenTelemetry SDK when `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (or
+`WORKBENCH_OTEL_ENABLED=true`) is present, so local worker spans and the
+SQS-triggered Lambda path use the same trace names. CloudWatch/X-Ray remain the
+authoritative AWS runtime view; the persisted job trace context joins both
+sides without putting tenant ids or content in telemetry.
 
 Public demo guardrails are intentionally conservative: one live generation per
 isolated workspace, a one-dollar daily application cap, and the existing

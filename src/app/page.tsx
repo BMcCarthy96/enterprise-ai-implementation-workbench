@@ -11,15 +11,15 @@ export default function Home() {
     <main className="min-h-screen overflow-hidden bg-[#07111f] text-white">
       <div className="hero-grid absolute inset-0 opacity-60" />
       <div className="relative mx-auto max-w-7xl px-6 py-8 lg:px-10 lg:py-10">
-        <header className="flex items-center justify-between">
+        <header className="flex flex-wrap items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-300 text-sm font-black text-slate-950">EA</span>
             <span><span className="block text-sm font-semibold tracking-wide">Enterprise AI</span><span className="block text-xs text-slate-400">Implementation Workbench</span></span>
           </Link>
-          <nav className="flex items-center gap-5 text-sm text-slate-300">
+          <nav aria-label="Public" className="flex items-center gap-3 text-xs text-slate-300 sm:gap-5 sm:text-sm">
             <Link href="/proof" className="transition hover:text-white">Proof</Link>
             <Link href="/login" className="transition hover:text-white">Sign in</Link>
-            <a href="https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench" className="transition hover:text-white">GitHub ↗</a>
+            <a href="https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench" className="hidden transition hover:text-white sm:inline">GitHub ↗</a>
           </nav>
         </header>
 
@@ -28,14 +28,15 @@ export default function Home() {
             <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300" /> Recruiter-ready AI systems portfolio</p>
             <h1 className="max-w-3xl text-5xl font-semibold leading-[1.02] tracking-[-0.04em] text-white sm:text-6xl">AI that drafts delivery work. Humans who stay in control.</h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">The Workbench turns messy implementation requirements into grounded, schema-validated plans with retrieval citations, repair traces, cost telemetry, and an explicit approval gate before anything reaches execution.</p>
-            <div className="mt-8 flex flex-wrap items-start gap-4"><DemoLaunchButton /><Link href="/login" className="btn-ghost">Explore seeded workspace</Link></div>
+            <div className="mt-8 flex flex-wrap items-start gap-4"><DemoLaunchButton /><Link href="/demo?checkpoint=portfolio-health" className="btn-ghost">Explore self-guided demo</Link></div>
+            <p className="mt-4 text-xs text-slate-400"><Link href="/demo?checkpoint=ai-evidence" className="text-cyan-200 hover:text-white">Take the 5-minute technical tour ↗</Link> <span className="mx-2 text-slate-600">·</span> <Link href="/login" className="text-slate-300 hover:text-white">Sign in to an existing workspace</Link></p>
             <p className="mt-4 text-xs text-slate-400">The demo uses synthetic data, creates an isolated 60-minute workspace, and never shares credentials between visitors.</p>
           </div>
           <div className="relative">
             <div className="glow-orb absolute -right-16 -top-20 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
             <div className="relative rounded-3xl border border-white/10 bg-white/[0.06] p-4 shadow-2xl shadow-cyan-950/30 backdrop-blur">
               <div className="rounded-2xl border border-white/10 bg-[#0b1728] p-5">
-                <div className="flex items-center justify-between border-b border-white/10 pb-4"><div><p className="text-xs uppercase tracking-[0.18em] text-slate-400">AI quality / live trace</p><p className="mt-1 text-sm font-semibold">Order intake implementation</p></div><span className="rounded-full bg-emerald-300/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">APPROVAL READY</span></div>
+                <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4"><div><p className="text-xs uppercase tracking-[0.18em] text-slate-400">AI quality / recorded trace</p><p className="mt-1 text-sm font-semibold">Order intake implementation</p></div><span className="shrink-0 rounded-full bg-emerald-300/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">APPROVAL READY</span></div>
                 <div className="mt-5 space-y-3">
                   <TraceRow number="01" label="Retrieve project brief" detail="8 scoped chunks · HNSW" tone="cyan" />
                   <TraceRow number="02" label="Generate structured plan" detail="Claude · plan-v1.1 · 1,200 in / 900 out" tone="indigo" />

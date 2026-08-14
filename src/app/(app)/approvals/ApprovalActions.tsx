@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { REJECTION_REASONS as REASONS } from "./reasons";
 
@@ -19,13 +19,16 @@ export function ApprovalActions({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  const idempotencyKey = useRef<string | null>(null);
 
   async function decide(decision: "approved" | "rejected") {
     setBusy(true);
     setError(null);
+    const key = idempotencyKey.current ?? crypto.randomUUID();
+    idempotencyKey.current = key;
     const res = await fetch(`/api/v1/approvals/${approvalId}/decision`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Idempotency-Key": key },
       body: JSON.stringify(
         decision === "approved"
           ? { decision, note: note || undefined }
@@ -38,6 +41,7 @@ export function ApprovalActions({
       ),
     });
     if (res.ok) {
+      idempotencyKey.current = null;
       const data = (await res.json().catch(() => ({}))) as {
         regenerationJobId?: string;
       };

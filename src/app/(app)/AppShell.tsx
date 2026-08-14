@@ -45,6 +45,8 @@ export function AppShell({
   const [open, setOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [switchingRole, setSwitchingRole] = useState<Role | null>(null);
+  const [resetPrompt, setResetPrompt] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progress, setProgress] = useState<TourProgress>({
     version: manifest.version,
     completedStepIds: manifest.steps.filter((step) => step.complete).map((step) => step.id),
@@ -101,6 +103,17 @@ export function AppShell({
   }, [hydrated, manifest.steps, pathname]);
 
   useEffect(() => {
+    if (!open && !resetPrompt) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (resetPrompt) setResetPrompt(false);
+      else setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, resetPrompt]);
+
+  useEffect(() => {
     if (!hydrated) return;
     const checkpoint = searchParams.get("checkpoint");
     if (!checkpoint) return;
@@ -142,8 +155,8 @@ export function AppShell({
     setOpen(true);
   }
 
-  async function resetDemo() {
-    if (!window.confirm("Reset this isolated demo? Your current walkthrough state and generated work will be replaced.")) return;
+  async function performReset() {
+    setResetPrompt(false);
     setResetting(true);
     try {
       const response = await fetch("/api/demo/reset", {
@@ -156,10 +169,14 @@ export function AppShell({
       router.push("/dashboard");
       router.refresh();
     } catch {
-      window.alert("The demo could not be reset. Your current workspace is still available.");
+      setErrorMessage("The demo could not be reset. Your current workspace is still available.");
     } finally {
       setResetting(false);
     }
+  }
+
+  function resetDemo() {
+    setResetPrompt(true);
   }
 
   async function switchRole(targetRole: Role) {
@@ -176,7 +193,7 @@ export function AppShell({
       router.replace(payload.redirectTo);
       router.refresh();
     } catch {
-      window.alert("That demo persona could not be activated. Your current view is still available.");
+      setErrorMessage("That demo persona could not be activated. Your current view is still available.");
     } finally {
       setSwitchingRole(null);
     }
@@ -220,6 +237,7 @@ export function AppShell({
           <aside
             aria-label={manifest.isDemo ? "Recruiter Mode" : "Product tour"}
             aria-hidden={!open}
+            inert={!open ? true : undefined}
             data-testid="recruiter-mode-panel"
             className={`fixed inset-y-0 right-0 z-50 flex w-[min(92vw,23rem)] flex-col border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300 motion-reduce:transition-none ${open ? "translate-x-0" : "pointer-events-none translate-x-full"}`}
           >
@@ -273,7 +291,7 @@ export function AppShell({
           </aside>
 
           {!open && (
-            <button type="button" onClick={() => setOpen(true)} data-testid="tour-open" className="fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-lg transition hover:border-cyan-300 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2">
+            <button type="button" onClick={() => setOpen(true)} data-testid="tour-open" className={`fixed ${demoQuota ? "bottom-20" : "bottom-4"} right-4 z-40 inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-lg transition hover:border-cyan-300 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2`}>
               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-100 text-xs text-cyan-700">{completionPercent === 100 ? "✓" : "→"}</span>
               {manifest.isDemo ? "Recruiter Mode" : "Product tour"}
             </button>
@@ -282,11 +300,21 @@ export function AppShell({
       )}
 
       {demoQuota && (
-        <div className={`fixed bottom-4 z-30 max-w-sm rounded-lg border border-cyan-200 bg-slate-950 px-4 py-3 text-xs text-white shadow-xl transition-[right] duration-300 motion-reduce:transition-none ${open ? "right-4 lg:right-[24rem]" : "right-4"}`}>
+        <div className={`fixed bottom-4 left-4 right-4 z-30 max-w-sm rounded-lg border border-cyan-200 bg-slate-950 px-4 py-3 text-xs text-white shadow-xl transition-[right] duration-300 motion-reduce:transition-none sm:left-auto ${open ? "lg:right-[24rem]" : "sm:right-4"}`}>
           <div className="flex items-start justify-between gap-4"><div><p className="font-semibold text-cyan-300">Isolated interactive demo</p><p className="mt-1 text-slate-300">Synthetic workspace · expires {new Date(demoQuota.expiresAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</p></div><button type="button" onClick={resetDemo} disabled={resetting} className="text-[11px] font-semibold text-cyan-200 underline decoration-cyan-400/40 underline-offset-2 hover:text-white">{resetting ? "Resetting…" : "Reset"}</button></div>
           <p className="mt-1 text-slate-400">{demoQuota.generations.limit - demoQuota.generations.used} AI generations left · {demoQuota.uploads.limit - demoQuota.uploads.used} uploads left · {quotaBytes(demoQuota.storageBytes.used)} / {quotaBytes(demoQuota.storageBytes.limit)}</p>
         </div>
       )}
+
+      {resetPrompt && <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/45 p-4" role="presentation">
+        <div role="dialog" aria-modal="true" aria-labelledby="reset-demo-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+          <h2 id="reset-demo-title" className="text-base font-semibold text-slate-950">Reset isolated demo?</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Your current walkthrough state and generated work will be replaced with the seeded scenario.</p>
+          <div className="mt-5 flex justify-end gap-2"><button type="button" autoFocus className="btn-secondary" onClick={() => setResetPrompt(false)}>Keep workspace</button><button type="button" className="btn-primary bg-rose-600 hover:bg-rose-700" onClick={() => void performReset()}>Reset demo</button></div>
+        </div>
+      </div>}
+
+      {errorMessage && <div className="fixed bottom-4 left-4 z-[80] max-w-sm rounded-xl border border-rose-200 bg-white px-4 py-3 text-sm text-rose-800 shadow-xl" role="alert"><div className="flex items-start gap-3"><span>{errorMessage}</span><button type="button" aria-label="Dismiss notification" className="min-h-8 min-w-8 rounded-md text-lg leading-none hover:bg-rose-50" onClick={() => setErrorMessage(null)}>×</button></div></div>}
     </>
   );
 }

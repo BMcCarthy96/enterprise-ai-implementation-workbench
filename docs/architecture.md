@@ -42,7 +42,7 @@ Mechanics:
 
 - `AiProvider` has deterministic mock, Bedrock Converse, and direct Anthropic implementations. The **mock** provider derives realistic output *from the actual prompt input* (it parses the same `<input_json>` envelope the real model sees), so offline demos exercise the identical pipeline: prompt build → completion → JSON extraction → zod validation → persistence.
 - User-authored plan/digest text and retrieved chunks are redacted before model submission. AI call telemetry stores counts, token usage, model/pricing version, latency, and sanitized outcomes—never raw prompts or responses.
-- Retrieval embeds a redacted, project-specific query, applies tenant + project predicates before vector ranking, drops low-similarity matches, and persists only validated opaque citation references (`S1…S8`).
+- Retrieval embeds a redacted, project-specific query, applies tenant + project predicates before ranking, fuses vector similarity with PostgreSQL lexical rank, and persists opaque citation references (`S1…S8`) together with retriever version, query hash, rank, component scores, selection reason, and a bounded redacted excerpt.
 - **Validation-repair loop:** one retry with the zod error text appended. Two design rules: never loop more than once (cost control), and never store unvalidated content.
 - **Prompt versioning:** every plan row stores `model` + `promptVersion`, so output drift is attributable when prompts evolve — the audit log shows which prompt produced which plan.
 - **What stays deterministic:** approval side effects (milestone/task materialization) are pure TypeScript over validated JSON. The model proposes; deterministic code disposes.

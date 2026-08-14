@@ -14,7 +14,7 @@ test.describe("interactive recruiter demo", () => {
     page,
   }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Launch interactive demo" }).click();
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
 
     await expect(page.getByRole("link", { name: "3 Active projects" })).toBeVisible();
@@ -30,7 +30,7 @@ test.describe("interactive recruiter demo", () => {
 
     await page.goto("/ai-runs");
     await expect(page.getByRole("table").getByText("repaired", { exact: true })).toBeVisible();
-    await expect(page.getByText("$0.0150", { exact: true })).toBeVisible();
+    await expect(page.getByText("Not priced", { exact: true })).toBeVisible();
     await page.getByRole("link", { name: /[0-9a-f]{8}/i }).first().click();
     await expect(page.getByRole("heading", { name: "AI evidence packet" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Automated checks" })).toBeVisible();
@@ -39,7 +39,7 @@ test.describe("interactive recruiter demo", () => {
 
   test("opens once, minimizes, resumes, and persists recruiter mode progress", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Launch interactive demo" }).click();
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
 
     const panel = page.getByTestId("recruiter-mode-panel");
@@ -55,7 +55,7 @@ test.describe("interactive recruiter demo", () => {
 
   test("switches among seeded demo personas while preserving RBAC", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Launch interactive demo" }).click();
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
     const bar = page.getByTestId("demo-role-bar");
     await expect(bar).toBeVisible();
@@ -73,10 +73,23 @@ test.describe("interactive recruiter demo", () => {
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "AI Evidence" })).toBeVisible();
   });
 
+  test("keeps the authenticated shell operable on a phone-sized viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
+    await page.waitForURL("**/dashboard");
+    await expect(page.getByRole("button", { name: /Open navigation/ })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.getByRole("button", { name: /Open navigation/ }).click();
+    await expect(page.getByRole("navigation", { name: "Mobile main navigation" })).toBeVisible();
+    await page.goto("/settings");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
   test("requires confirmation and issues a fresh demo on reset", async ({ page }) => {
     await page.goto("/");
     const launch = page.waitForResponse("**/api/demo/session");
-    await page.getByRole("button", { name: "Launch interactive demo" }).click();
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
     const launchResponse = await launch;
     const firstWorkspace = ((await launchResponse.json()) as { workspaceId: string }).workspaceId;
     await page.waitForURL("**/dashboard");
@@ -92,7 +105,7 @@ test.describe("interactive recruiter demo", () => {
   test("keeps recruiter mode usable on a narrow viewport", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 900 });
     await page.goto("/");
-    await page.getByRole("button", { name: "Launch interactive demo" }).click();
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
     await expect(page.getByTestId("recruiter-mode-panel")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -120,15 +133,15 @@ test.describe("authentication & RBAC", () => {
     for (const label of ["Dashboard", "Projects", "Approvals", "Audit Log", "Operations"]) {
       await expect(nav.getByRole("link", { name: label })).toBeVisible();
     }
-    // Members is admin-only.
-    await expect(nav.getByRole("link", { name: "Members" })).toHaveCount(0);
+    // Settings is admin-only.
+    await expect(nav.getByRole("link", { name: "Settings" })).toHaveCount(0);
   });
 
   test("customer stakeholder gets a restricted view", async ({ page }) => {
     await login(page, "customer@brightlane.dev");
     const nav = page.getByRole("navigation");
     await expect(nav.getByRole("link", { name: "Projects" })).toBeVisible();
-    for (const label of ["Approvals", "Insights", "Audit Log", "Operations", "Members"]) {
+    for (const label of ["Approvals", "Insights", "Audit Log", "Operations", "Settings"]) {
       await expect(nav.getByRole("link", { name: label })).toHaveCount(0);
     }
     // Direct navigation to internal pages/APIs is also denied.
@@ -159,7 +172,7 @@ test.describe("seeded delivery data", () => {
     await page.goto("/projects");
     await page.getByRole("link", { name: "Order Intake Automation" }).click();
     const tabs = page.getByRole("navigation", { name: "Project sections" });
-    await tabs.getByRole("link", { name: "Board" }).click();
+    await tabs.getByRole("link", { name: "Delivery" }).click();
     // Column headers use exact, case-sensitive text so they don't collide with
     // the lowercase "in progress" <option>s inside each card's status select.
     await expect(page.getByText("To do", { exact: true })).toBeVisible();
@@ -198,10 +211,10 @@ test.describe("seeded delivery data", () => {
     await page.goto("/projects");
     await page.getByRole("link", { name: "Order Intake Automation" }).click();
     const tabs = page.getByRole("navigation", { name: "Project sections" });
-    await expect(tabs.getByRole("link", { name: "Updates" })).toBeVisible();
-    await expect(tabs.getByRole("link", { name: "Board" })).toHaveCount(0);
-    await expect(tabs.getByRole("link", { name: "Requirements" })).toHaveCount(0);
-    await tabs.getByRole("link", { name: "Updates" }).click();
+    await expect(tabs.getByRole("link", { name: "Communications" })).toBeVisible();
+    await expect(tabs.getByRole("link", { name: "Delivery" })).toHaveCount(0);
+    await expect(tabs.getByRole("link", { name: "Scope" })).toHaveCount(0);
+    await tabs.getByRole("link", { name: "Communications" }).click();
     await expect(
       page.getByText("Order Intake Automation — Progress Update"),
     ).toBeVisible();
@@ -554,7 +567,7 @@ test.describe("full async workflow (requires worker: E2E_WORKER=1)", () => {
     await page.getByRole("link", { name: "Patient Onboarding Portal" }).click();
     await page
       .getByRole("navigation", { name: "Project sections" })
-      .getByRole("link", { name: "Board" })
+      .getByRole("link", { name: "Delivery" })
       .click();
     await expect(page.getByText("Run kickoff workshop").first()).toBeVisible();
   });

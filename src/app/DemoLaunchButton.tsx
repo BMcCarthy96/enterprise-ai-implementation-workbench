@@ -26,7 +26,7 @@ export function DemoLaunchButton({ checkpoint }: { checkpoint?: string } = {}) {
   return (
     <div>
       <button className="btn-demo" onClick={launch} disabled={busy}>
-        {busy ? "Preparing a private workspace…" : "Launch interactive demo"}
+        {busy ? "Preparing a private workspace…" : "Start 90-second tour"}
         {!busy && <span aria-hidden="true">→</span>}
       </button>
       {error && <p className="mt-2 text-xs text-rose-200">{error}</p>}

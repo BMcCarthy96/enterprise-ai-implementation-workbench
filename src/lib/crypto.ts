@@ -4,7 +4,11 @@ import { env } from "@/lib/env";
 const ALGORITHM = "aes-256-gcm";
 
 function encryptionKey(): Buffer {
-  const configured = env().APP_ENCRYPTION_KEY ?? env().SESSION_SECRET;
+  const configuration = env();
+  if (!configuration.APP_ENCRYPTION_KEY && configuration.NODE_ENV === "production") {
+    throw new Error("APP_ENCRYPTION_KEY is required in production; do not reuse SESSION_SECRET for data encryption");
+  }
+  const configured = configuration.APP_ENCRYPTION_KEY ?? configuration.SESSION_SECRET;
   return createHash("sha256").update(configured).digest();
 }
 

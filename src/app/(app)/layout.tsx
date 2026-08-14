@@ -7,6 +7,7 @@ import { LogoutButton } from "@/components/LogoutButton";
 import { SearchPalette } from "@/components/SearchPalette";
 import { NavLinks } from "./NavLinks";
 import { AppShell } from "./AppShell";
+import { MobileNav } from "./MobileNav";
 import { getTourManifest } from "@/server/services/tour";
 
 export interface NavItem {
@@ -35,7 +36,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     label: "Governance",
     items: [
       { href: "/audit", label: "Audit Log", permission: "audit.view" },
-      { href: "/settings/members", label: "Members", permission: "org.manage_members" },
+      { href: "/settings", label: "Settings", permission: "org.manage_members" },
     ],
   },
   {
@@ -96,14 +97,17 @@ export default async function AppLayout({
         storageBytes: { used: demoWorkspace.uploadBytes, limit: demoWorkspace.maxStorageBytes },
       } : null}
     >
-    <div className="flex min-h-screen">
-      <aside className="fixed inset-y-0 flex w-60 flex-col border-r border-slate-800 bg-[#081526]">
+    <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[90] focus:rounded-lg focus:bg-white focus:px-4 focus:py-3 focus:text-sm focus:font-semibold focus:text-slate-950 focus:shadow-lg">Skip to main content</a>
+    <div className="min-h-screen">
+      <MobileNav groups={groups} orgName={session.orgName} userName={session.name} />
+      <div className="flex min-h-[calc(100vh-57px)] lg:min-h-screen">
+      <aside className="fixed inset-y-0 z-20 hidden w-60 flex-col border-r border-slate-800 bg-[#081526] lg:flex">
         <div className="flex items-center gap-2 border-b border-white/10 px-4 py-4">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-300 text-[11px] font-black text-slate-950">
             EA
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-gray-900">
+            <p className="truncate text-sm font-semibold text-white">
               Enterprise AI
             </p>
             <p className="truncate text-[11px] text-slate-400">Implementation Workbench</p>
@@ -126,7 +130,8 @@ export default async function AppLayout({
           <LogoutButton />
         </div>
       </aside>
-      <main className="ml-60 flex-1 px-8 py-6">{children}</main>
+      <main id="main-content" className="ml-0 min-w-0 flex-1 px-4 py-5 sm:px-6 lg:ml-60 lg:px-8 lg:py-6">{children}</main>
+      </div>
     </div>
     </AppShell>
   );

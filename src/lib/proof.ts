@@ -1,6 +1,7 @@
 import scoreboard from "../../evals/scoreboard.json";
+import { getBuildMetadata } from "@/lib/buildMetadata";
 
-export type ProofStatus = "verified" | "implemented" | "target" | "planned";
+export type ProofStatus = "verified" | "ci_verified" | "staging_observed" | "implemented" | "target" | "planned";
 export type ProofEvidenceKind =
   | "demo"
   | "test"
@@ -25,10 +26,19 @@ export interface ProofClaim {
   status: ProofStatus;
   evidence: ProofEvidence[];
   lastVerifiedCommit?: string;
+  verification?: {
+    commitSha: string;
+    workflowRunUrl?: string;
+    command?: string;
+    environment: string;
+    verifiedAt: string;
+  };
 }
 
 export const proofStatusLabels: Record<ProofStatus, string> = {
-  verified: "Verified in CI / demo",
+  verified: "Legacy verified label",
+  ci_verified: "Verified by CI evidence",
+  staging_observed: "Observed in staging",
   implemented: "Implemented in code",
   target: "Operating target",
   planned: "Planned next",
@@ -41,9 +51,9 @@ export const proofClaims: ProofClaim[] = [
     title: "AI output stays a proposal until a human approves it",
     summary:
       "Structured plans are validated, reviewed, and only then materialized into delivery milestones and tasks.",
-    status: "verified",
+    status: "ci_verified",
     evidence: [
-      { kind: "demo", label: "Open approval queue", href: "/approvals" },
+      { kind: "demo", label: "Open approval checkpoint", href: "/demo?checkpoint=ai-evidence" },
       { kind: "test", label: "Approval and RBAC tests", href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/tests/unit/approvals.test.ts" },
       { kind: "adr", label: "Architecture notes", href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/docs/architecture.md" },
     ],
@@ -54,9 +64,9 @@ export const proofClaims: ProofClaim[] = [
     title: "Every plan carries inspectable AI evidence",
     summary:
       "Retrieval, repair, normalized checks, citations, cost, latency, and the approval outcome are connected in one evidence packet.",
-    status: "verified",
+    status: "ci_verified",
     evidence: [
-      { kind: "demo", label: "Open AI evidence", href: "/ai-runs" },
+      { kind: "demo", label: "Open AI evidence checkpoint", href: "/demo?checkpoint=ai-evidence" },
       { kind: "test", label: "Evidence service tests", href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/tests/unit/aiEvidence.test.ts" },
       { kind: "api", label: "OpenAPI contract", href: "/api/openapi.json" },
     ],
@@ -67,7 +77,7 @@ export const proofClaims: ProofClaim[] = [
     title: "Tenant boundaries are enforced in application and database layers",
     summary:
       "RBAC, organization-scoped lookups, transaction-local RLS context, private object storage, and synthetic demo isolation work together.",
-    status: "verified",
+    status: "implemented",
     evidence: [
       { kind: "test", label: "Access and RBAC tests", href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/tests/unit/access.test.ts" },
       { kind: "runbook", label: "Security boundaries", href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/docs/security.md" },
@@ -80,7 +90,7 @@ export const proofClaims: ProofClaim[] = [
     title: "At-least-once delivery and failure are first-class states",
     summary:
       "Atomic job claims, persisted backoff, partial-batch handling, dead-letter parking, and a visible retry path make recovery inspectable.",
-    status: "verified",
+    status: "implemented",
     evidence: [
       { kind: "demo", label: "Open operations", href: "/demo?checkpoint=dlq-recovery" },
       { kind: "test", label: "Job reliability tests", href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/tests/unit/jobs.test.ts" },
@@ -93,11 +103,11 @@ export const proofClaims: ProofClaim[] = [
     title: "AI quality claims are backed by a reproducible offline suite",
     summary:
       "Fifteen synthetic cases across three prompt variants exercise schema, coverage, citation, and injection gates without cloud credentials.",
-    status: "verified",
+    status: "ci_verified",
     evidence: [
       { kind: "artifact", label: "Offline scoreboard", href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/evals/scoreboard.json" },
       { kind: "ci", label: "CI workflow", href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/actions/workflows/ci.yml" },
-      { kind: "demo", label: "Open AI quality", href: "/insights" },
+      { kind: "demo", label: "Open AI quality checkpoint", href: "/demo?checkpoint=ai-evidence" },
     ],
   },
   {
@@ -190,13 +200,23 @@ export const proofClaims: ProofClaim[] = [
 
 export function getProofManifest() {
   const flagship = scoreboard.variants["plan-v2.0"] ?? scoreboard.variants["plan-v1.0"];
-  const commit = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA ?? "local";
+  const buildMetadata = getBuildMetadata();
+  const commit = buildMetadata.commit;
+  const evidenceCommit = process.env.PROOF_EVIDENCE_SHA;
+  const evidenceRunUrl = process.env.PROOF_EVIDENCE_RUN_URL;
+  const evidenceCommand = process.env.PROOF_EVIDENCE_COMMAND;
+  const verifiedAt = process.env.PROOF_EVIDENCE_VERIFIED_AT ?? null;
   return {
     schemaVersion: "1.0",
     generatedAt: new Date().toISOString(),
     build: {
       commit,
       environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development",
+      deploymentMode: buildMetadata.deploymentMode,
+      providerMode: buildMetadata.providerMode,
+      databaseMode: buildMetadata.databaseMode,
+      buildTime: buildMetadata.buildTime,
+      evidenceVersion: buildMetadata.evidenceVersion,
     },
     evaluation: {
       suiteVersion: scoreboard.suiteVersion,
@@ -207,8 +227,17 @@ export function getProofManifest() {
     },
     claims: proofClaims.map((claim) => ({
       ...claim,
-      ...(claim.status === "verified" || claim.status === "implemented"
-        ? { lastVerifiedCommit: commit }
+      ...(evidenceCommit && (claim.status === "ci_verified" || claim.status === "staging_observed")
+        ? {
+            lastVerifiedCommit: evidenceCommit,
+            verification: {
+              commitSha: evidenceCommit,
+              ...(evidenceRunUrl ? { workflowRunUrl: evidenceRunUrl } : {}),
+              ...(evidenceCommand ? { command: evidenceCommand } : {}),
+              environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development",
+              verifiedAt: verifiedAt ?? new Date().toISOString(),
+            },
+          }
         : {}),
     })),
   } as const;
@@ -216,7 +245,9 @@ export function getProofManifest() {
 
 export function proofStatusTone(status: ProofStatus): string {
   return {
-    verified: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    verified: "border-slate-200 bg-slate-50 text-slate-700",
+    ci_verified: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    staging_observed: "border-cyan-200 bg-cyan-50 text-cyan-800",
     implemented: "border-indigo-200 bg-indigo-50 text-indigo-800",
     target: "border-amber-200 bg-amber-50 text-amber-800",
     planned: "border-gray-200 bg-gray-50 text-gray-700",

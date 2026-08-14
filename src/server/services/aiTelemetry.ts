@@ -22,6 +22,7 @@ export async function startAiRun(input: {
   artifactType: ArtifactType;
   provider: string;
   promptVersion?: string | null;
+  dataOrigin?: "fixture" | "mock_run" | "live_provider";
   startedAt?: Date;
 }): Promise<{ id: string; startedAt: Date }> {
   const startedAt = input.startedAt ?? new Date();
@@ -34,6 +35,7 @@ export async function startAiRun(input: {
       artifactType: input.artifactType,
       provider: input.provider,
       promptVersion: input.promptVersion ?? null,
+      dataOrigin: input.dataOrigin ?? (input.provider === "mock" ? "mock_run" : "live_provider"),
       startedAt,
     })
     .returning({ id: schema.aiRuns.id });

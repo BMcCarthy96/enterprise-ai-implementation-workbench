@@ -16,6 +16,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npx --yes @lhci/cli@0.14.x autorun
+      - run: npx --yes @lhci/cli@0.14.x autorun --config=lighthouserc.cjs
         env:
-          LHCI_BUILD_CONTEXT__BASE_URL: ${{ inputs.base_url }}
+          LHCI_BASE_URL: ${{ inputs.base_url }}

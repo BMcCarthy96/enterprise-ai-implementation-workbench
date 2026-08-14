@@ -6,6 +6,21 @@ A multi-tenant internal platform for software implementation teams: it turns mes
 
 > **TL;DR demo flow:** capture requirements → ground an AI scoping job with tenant-filtered document chunks → trace generation, validation, repair, cost, and citations → route the plan to a human approval queue → materialize approved milestones/tasks → keep every decision in the audit log.
 
+## Review it in 60 seconds
+
+1. Run `docker compose up -d`, `npm run db:migrate`, and `npm run db:seed`.
+2. Start `npm run dev` and `npm run worker` in separate terminals.
+3. Open `/` and choose **Start 90-second tour**. The isolated tour links directly to the AI evidence packet, approval boundary, materialized delivery, customer-safe view, and dead-letter recovery.
+4. Open `/proof` for the machine-readable claim registry and `/proof/case-study` for the decision narrative.
+
+The public demo is synthetic by design. Every evidence packet identifies whether it is a fixture, deterministic mock run, or live provider observation; no synthetic fixture is presented as production telemetry.
+
+The public journey has three entry points: **Start 90-second tour** for the
+short delivery story, **5-minute technical tour** for retrieval, role
+switching, and failure recovery, and **Explore self-guided demo** for the full
+isolated workspace. All three provision the same expiring synthetic boundary;
+the checkpoint only controls where Recruiter Mode opens.
+
 ## Who this is for
 
 | Persona | What they get |
@@ -49,7 +64,8 @@ A multi-tenant internal platform for software implementation teams: it turns mes
 - **RBAC** across four roles, enforced on API routes, server components, and navigation alike
 - [**Reliability**](#reliability--operability): exponential-backoff retries, dead-letter parking with one-click retry, atomic job claiming, structured logs, health probe
 - **Guarded public demo** — an ephemeral synthetic workspace with TTL, quotas, spend circuit breakers, four seeded persona identities, and a persistent one-click role switcher; no shared credentials or production impersonation
-- [**OpenAPI 3.1 docs**](#api) generated from the same zod schemas the handlers validate with — they cannot drift from behavior
+- **Operable enterprise controls** — Settings surfaces for memberships, OIDC, SCIM, signed webhooks, and retention use the same guarded APIs as the product
+- [**OpenAPI 3.1 docs**](#api) generated from shared Zod contracts where handlers validate them, with route coverage checked in CI
 - Runs **100% locally** on Docker + LocalStack; the switch to real AWS is env vars, not code
 
 ## Architecture
@@ -64,8 +80,10 @@ flowchart LR
       API["/api/v1 REST<br/>zod validation + RBAC"]
       SC[Server Components<br/>org-scoped queries]
     end
+    subgraph "Persistent data"
+      PG[(PostgreSQL + pgvector<br/>Neon or Aurora)]
+    end
     subgraph "AWS (LocalStack locally)"
-      PG[(PostgreSQL + pgvector<br/>Neon)]
       S3[(S3<br/>documents)]
       SQS[[SQS<br/>jobs queue + DLQ]]
       BR[Bedrock<br/>Claude + Titan]
@@ -85,7 +103,7 @@ flowchart LR
 
 **Key decisions (and why):**
 
-- **DB row = source of truth for jobs; SQS message = delivery only.** Messages carry just a `jobId`. Publication runs only after the job transaction commits; `dispatched_at` plus a scheduled reconciler repairs transient publish failures. Duplicate delivery (SQS is at-least-once) is harmless because the worker claims jobs with an atomic `queued → running` transition. All observability lives in Postgres, surfaced on the Ops page.
+- **DB row = source of truth for jobs; SQS message = delivery only.** Messages carry just a `jobId`. Publication runs only after the job transaction commits; `dispatched_at` plus a scheduled reconciler repairs transient publish failures. Duplicate delivery (SQS is at-least-once) is safe because workers claim queued work with a lease, heartbeat it during execution, and reclaim expired running jobs. Attempts and failure reasons remain visible on the Ops page.
 - **AI output never acts on its own.** Plan generation stores a `pending_approval` plan and opens an approval. Only a human decision materializes milestones/tasks. Customer updates follow the same gate — nothing reaches the customer role without sign-off.
 - **Bulk review without hiding failures.** A reviewer can apply one decision across a selection (`POST /api/v1/approvals/bulk`). Each item stays an independent audited transaction, so a stale selection — someone else already decided one — yields a *partial success* report (`succeeded[]` / `failed[]` / summary) instead of rolling back the reviewer's other valid decisions. Fan-out is capped at 50 ids per request since each rejection can queue a regeneration.
 - **Closed feedback loop.** When a plan is rejected, the reviewer's reason code + note are captured and — with one checkbox, on by default — a revised generation is queued automatically, carrying that feedback into the next prompt; the resulting version records what feedback it addressed. A per-version diff (milestones added/removed, task/risk deltas) makes re-approval fast. This is the loop the Insights dashboard then measures.
@@ -113,7 +131,7 @@ erDiagram
     organizations ||--o{ jobs : runs
 ```
 
-19 tables, with tenant-owned delivery, AI observability, retrieval, citations, and ephemeral demo workspace data. `audit_events` is append-only; `plans` are versioned (approve v2 → v1 becomes `superseded`).
+29 tables, with tenant-owned delivery, AI observability, retrieval, citations, enterprise controls, and ephemeral demo workspace data. `audit_events` is append-only; `plans` are versioned (approve v2 → v1 becomes `superseded`).
 
 ## The approval workflow (sequence)
 
@@ -154,7 +172,7 @@ npm run db:migrate            # apply Drizzle migrations
 npm run db:seed               # two demo tenants with realistic history
 npm run dev                   # app on http://localhost:3000
 npm run worker                # background job worker (second terminal)
-npm run eval:offline          # deterministic 15-case quality gate (including retrieval on/off)
+npm run eval:offline          # deterministic 15-case contract regression gate (including retrieval on/off)
 npm run infra:install && npm run infra:synth  # CDK template validation
 npm run capture:evidence                     # deterministic 1440×900 screenshots
 npm run capture:video                        # repeatable silent recruiter walkthrough (WebM)
@@ -170,7 +188,7 @@ Sign in with any demo account (password `demo1234`):
 | `customer@brightlane.dev` | Customer Stakeholder |
 | `admin@cascade.dev` | Admin of a second tenant (isolation demo) |
 
-**Suggested demo:** use the landing page’s **Launch interactive demo** button. The isolated workspace opens Recruiter Mode once with a checklist that walks through the dashboard health view → grounded Order Intake plan → repaired AI trace → Claims approval → live Patient Onboarding generation → board materialization → dead-letter recovery → customer update. Minimize/reopen the dock at any time, or use **Reset** to provision a fresh scenario. For persona-specific access, sign in as `engineer` → open *Patient Onboarding Portal* → Plan tab → *Generate implementation plan* (watch the job go queued → running on the Ops page) → sign in as `manager` → Approvals → review & approve → Board tab now has the materialized tasks → Updates tab → *Draft customer update* → approve it → sign in as `customer@brightlane.dev` to see exactly what an external stakeholder sees.
+**Suggested demo:** use the landing page’s **Start 90-second tour** button. The isolated workspace opens Recruiter Mode once with a checklist that walks through the dashboard health view → grounded Order Intake plan → repaired AI trace → Claims approval → live Patient Onboarding generation → delivery materialization → dead-letter recovery → customer communication. Minimize/reopen the dock at any time, or use **Reset** to provision a fresh scenario. For persona-specific access, sign in as `engineer` → open *Patient Onboarding Portal* → Plan tab → *Generate implementation plan* (watch the job go queued → running on the Ops page) → sign in as `manager` → Approvals → review & approve → Delivery now has the materialized tasks → Communications → *Draft customer update* → approve it → sign in as `customer@brightlane.dev` to see exactly what an external stakeholder sees.
 
 ## Global search
 
@@ -178,9 +196,12 @@ A **⌘K / Ctrl+K command palette** (in the sidebar of every authenticated page)
 
 ## API
 
-The REST surface is documented as OpenAPI 3.1 generated **from the same zod schemas the handlers validate with** — docs can't drift from behavior: [`GET /api/openapi.json`](http://localhost:3000/api/openapi.json).
+The REST surface is documented as OpenAPI 3.1 from the shared request/response contracts used by the handlers, with route and schema checks in CI: [`GET /api/openapi.json`](http://localhost:3000/api/openapi.json).
 
 Auth is a `workbench_session` httpOnly cookie (HS256 JWT, 12h). Async operations (plan generation, digests) return `202 { jobId }`; poll `GET /api/v1/jobs`. The isolated demo's internal `POST /api/demo/role` endpoint switches only among seeded persona memberships and returns a safe in-app redirect; it is not a production impersonation API.
+
+`GET /api/build-metadata` is public and intentionally narrow: deployment mode,
+provider mode, database mode, commit, build time, and proof schema version only.
 
 ## Testing & CI
 
@@ -207,14 +228,14 @@ The isolated demo exposes the same workflow through four synthetic identities �
 
 The Insights page also separates live telemetry from the committed **offline regression suite**. The scorecard shows case count, categories, prompt variants, hard-gate status, baseline delta, provider, suite version, and freshness (stale after 30 days).
 
-The offline eval lane covers 15 synthetic cases across three prompt variants, including paired retrieval-on/retrieval-off fixtures, and writes a committed baseline to `evals/baseline.json`:
+The **Deterministic Contract Regression Suite** covers 15 synthetic cases across three prompt variants, including paired retrieval-on/retrieval-off fixtures, and writes a committed baseline to `evals/baseline.json`. It verifies schema, guardrail, citation, and persistence contracts; its perfect fixture score is not a claim about live model quality. Real-provider quality evaluation remains an explicit, budget-capped workflow:
 
 ```bash
-npm run eval:offline   # deterministic fixture suite
+npm run eval:offline   # deterministic contract regression suite
 npm run eval:smoke     # four-case development smoke lane
 npm run eval:check     # hard regression gate against the baseline
 npm run eval:live      # full provider matrix when AI_PROVIDER=bedrock|anthropic
-npm run eval:calibration:generate  # 15 blinded candidates for human scoring
+npm run eval:calibration:generate  # blinded candidates for human scoring
 npm run eval:calibration:judge     # optional live LLM judge scores (after setting AI_PROVIDER)
 npm run eval:calibration:report    # Spearman/MAE eligibility report
 ```
@@ -245,7 +266,7 @@ Risk is **derived on read**, not stored — no extra tables, no drift. The scori
 
 - Exponential backoff retries with SQS delayed delivery; attempts tracked per job
 - Dead-letter parking after `maxAttempts`, surfaced in the UI with one-click manual retry (audited)
-- Atomic job claiming → duplicate SQS deliveries are no-ops
+- Atomic job claiming with lease/heartbeat/recovery → duplicate SQS deliveries are no-ops and crashed workers are reclaimable
 - Post-commit SQS dispatch + durable reconciliation → a transient publish failure cannot strand a queued job
 - Structured pino logs with request IDs on every API call and job attempt
 - Uniform JSON error envelope (`{ error, requestId }`) with zod issue details on 400s
@@ -263,7 +284,7 @@ See [docs/aws-deployment.md](docs/aws-deployment.md) for the full path: Neon/pgv
 src/
   app/               # Next.js App Router: (app) authenticated shell + /api routes
   components/        # shared UI primitives
-  db/                # Drizzle schema + client (19 tables + pgvector)
+  db/                # Drizzle schema + client (29 tables + pgvector)
   lib/
     ai/              # provider abstraction: bedrock.ts, mock.ts, prompts, plan schema
     auth/            # sessions (jose), passwords (bcrypt), RBAC matrix
@@ -278,11 +299,13 @@ docs/                # architecture, AWS deployment, case study
 
 ## Enterprise credibility surfaces
 
-The public proof hub at /proof is both a recruiter-friendly narrative and a
-machine-readable evidence map. Claims are labeled Verified, Implemented,
-Target, or Planned and link to demo checkpoints, tests, APIs, artifacts, ADRs,
-and runbooks. The printable case study is at /proof/case-study and the safe
-manifest is at /api/proof/manifest.
+The public proof hub at /proof is both a reviewer-friendly narrative and a
+machine-readable evidence map. Claims are labeled CI verified, staging
+observed, implemented, target, or planned and link to demo checkpoints, tests,
+APIs, artifacts, ADRs, and runbooks. CI only stamps a claim as verified when a
+commit and workflow run are supplied; local fixture data is explicitly labeled.
+The printable case study is at /proof/case-study and the safe manifest is at
+/api/proof/manifest.
 
 For local identity and observability, use the optional Docker profiles:
 

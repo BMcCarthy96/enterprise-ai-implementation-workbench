@@ -30,10 +30,15 @@ export async function assertSafeWebhookTarget(url: URL): Promise<void> {
   if (addresses.some(isBlockedHost)) throw new Error("Webhook target resolved to a private network");
 }
 
-function isBlockedHost(host: string): boolean {
-  if (host === "localhost" || host.endsWith(".localhost") || host === "::1") return true;
-  if (host.includes(":")) return host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe8");
-  const parts = host.split(".").map(Number);
+export function isBlockedHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (normalized === "localhost" || normalized.endsWith(".localhost")) return true;
+  if (normalized.includes(":")) {
+    const mapped = normalized.match(/::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+    if (mapped && isBlockedHost(mapped[1])) return true;
+    return normalized === "::" || normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || /^fe[89ab]/.test(normalized) || normalized.startsWith("ff") || normalized.startsWith("2001:db8:") || normalized.startsWith("100:");
+  }
+  const parts = normalized.split(".").map(Number);
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) return false;
   return parts[0] === 10 || parts[0] === 127 || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168) || (parts[0] === 169 && parts[1] === 254);
 }

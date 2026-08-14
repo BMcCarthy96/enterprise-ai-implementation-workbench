@@ -190,6 +190,8 @@ async function runPlanGenerationJobInternal(job: {
   let userPrompt = "";
   let sequence = 0;
   let retrievedSources: RetrievedSource[] = [];
+  let retrieverVersion = "hybrid-v1";
+  let retrievalQueryHash: string | null = null;
   try {
     const retrievalStartedAt = Date.now();
     const retrieval = await withSpan(
@@ -206,6 +208,8 @@ async function runPlanGenerationJobInternal(job: {
       }),
     );
     retrievedSources = retrieval.sources;
+    retrieverVersion = retrieval.retrieverVersion;
+    retrievalQueryHash = retrieval.queryHash;
     if (retrieval.embedding) {
       sequence += 1;
       await recordAiCall({
@@ -360,6 +364,13 @@ async function runPlanGenerationJobInternal(job: {
         location: [source.documentName, source.pageNumber ? `page ${source.pageNumber}` : source.heading]
           .filter(Boolean)
           .join(" · "),
+        retrieverVersion,
+        queryHash: retrievalQueryHash,
+        rank: retrievedSources.findIndex((candidate) => candidate.ref === ref) + 1,
+        vectorScore: source.vectorScore.toFixed(8),
+        lexicalScore: source.lexicalScore.toFixed(8),
+        selectionReason: source.selectionReason,
+        redactedExcerpt: source.content.slice(0, 280),
       };
     });
     if (citationRows.length) await db.insert(schema.planCitations).values(citationRows);

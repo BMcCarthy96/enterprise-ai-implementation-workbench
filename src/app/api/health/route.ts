@@ -18,11 +18,13 @@ async function check(fn: () => Promise<void>) {
   try {
     await fn();
     return { ok: true, latencyMs: Date.now() - started };
-  } catch (err) {
+  } catch {
+    // Health is public and must not echo connection strings, provider errors,
+    // or stack details. Correlate the server-side exception through logs.
     return {
       ok: false,
       latencyMs: Date.now() - started,
-      error: err instanceof Error ? err.message : String(err),
+      error: "dependency_unavailable",
     };
   }
 }

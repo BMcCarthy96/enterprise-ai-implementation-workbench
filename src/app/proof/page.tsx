@@ -11,10 +11,10 @@ import {
 export const metadata = {
   title: "Portfolio proof",
   description:
-    "A recruiter-ready evidence map for the Enterprise AI Implementation Workbench.",
+    "A technical evidence map for the Enterprise AI Implementation Workbench.",
 };
 
-const statusOrder: ProofStatus[] = ["verified", "implemented", "target", "planned"];
+const statusOrder: ProofStatus[] = ["ci_verified", "staging_observed", "implemented", "target", "planned"];
 
 export default function ProofPage() {
   const manifest = getProofManifest();
@@ -52,10 +52,11 @@ export default function ProofPage() {
           <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-5 backdrop-blur">
             <div className="flex items-center justify-between border-b border-white/10 pb-4"><div><p className="text-xs uppercase tracking-[0.18em] text-slate-400">Build evidence</p><p className="mt-1 text-sm font-semibold">{manifest.build.environment} / {manifest.build.commit.slice(0, 12)}</p></div><span className="rounded-full bg-emerald-300/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">INSPECTABLE</span></div>
             <div className="mt-5 grid grid-cols-3 gap-3">
-              <Metric label="Verified" value={String(manifest.claims.filter((claim) => claim.status === "verified").length)} />
+              <Metric label="CI verified" value={String(manifest.claims.filter((claim) => claim.status === "ci_verified").length)} />
               <Metric label="Eval cases" value={String(manifest.evaluation.caseCount)} />
               <Metric label="AI gates" value={formatRate(Math.min(manifest.evaluation.citationValidity ?? 0, manifest.evaluation.injectionResistance ?? 0))} />
             </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-400"><span>Mode · <strong className="font-medium text-slate-200">{manifest.build.deploymentMode}</strong></span><span>Provider · <strong className="font-medium text-slate-200">{manifest.build.providerMode}</strong></span><span>Database · <strong className="font-medium text-slate-200">{manifest.build.databaseMode}</strong></span><Link href="/api/build-metadata" className="text-cyan-200 hover:text-white">Machine metadata ↗</Link></div>
             <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">The story in one minute</p><ol className="mt-3 space-y-2 text-sm text-slate-300"><li><span className="mr-2 font-mono text-cyan-300">01</span>Requirements become a cited, schema-validated proposal.</li><li><span className="mr-2 font-mono text-cyan-300">02</span>A manager decision is required before task mutation.</li><li><span className="mr-2 font-mono text-cyan-300">03</span>Delivery, customer updates, and failure recovery stay observable.</li></ol></div>
           </div>
         </section>
@@ -68,6 +69,16 @@ export default function ProofPage() {
             <FlowStep number="03" title="Validate" body="Zod, citation, injection, and policy checks guard the output." tone="amber" />
             <FlowStep number="04" title="Approve" body="A human decision keeps valid AI output inert until reviewed." tone="emerald" />
             <FlowStep number="05" title="Deliver" body="Jobs, tasks, updates, audit, and recovery remain visible." tone="rose" />
+          </div>
+        </section>
+
+        <section aria-labelledby="review-lenses-heading" className="py-14">
+          <div className="max-w-2xl"><p className="eyebrow">Choose a review lens</p><h2 id="review-lenses-heading" className="mt-2 text-2xl font-semibold">Start with the engineering question you care about.</h2><p className="mt-3 leading-7 text-slate-400">Each path lands on inspectable product evidence instead of a résumé claim.</p></div>
+          <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <ReviewLens title="Quick review" body="Follow the shortest path from seeded requirements to a governed delivery artifact." href="/demo?checkpoint=portfolio-health" />
+            <ReviewLens title="AI system" body="Inspect retrieval, repair, validation, citations, origin, and the human decision." href="/demo?checkpoint=ai-evidence" />
+            <ReviewLens title="Product delivery" body="See risk, approvals, task materialization, customer-safe updates, and audit." href="/demo?checkpoint=portfolio-health" />
+            <ReviewLens title="Platform & security" body="Review leases, RLS context, OIDC/SCIM, webhooks, retention, and the API contract." href="/demo?checkpoint=dlq-recovery" />
           </div>
         </section>
 
@@ -91,7 +102,7 @@ export default function ProofPage() {
 
 function ClaimGroup({ status, claims }: { status: ProofStatus; claims: ProofClaim[] }) {
   const headingId = status + "-claims-heading";
-  const title = status === "verified" ? "Verified evidence" : status === "implemented" ? "Implemented foundations" : status === "target" ? "Operating targets" : "Planned next";
+  const title = status === "ci_verified" ? "CI-verified evidence" : status === "staging_observed" ? "Staging observations" : status === "implemented" ? "Implemented foundations" : status === "target" ? "Operating targets" : "Planned next";
   return <section aria-labelledby={headingId}><div className="flex items-center gap-3"><h3 id={headingId} className="text-lg font-semibold">{title}</h3><span className={"badge border " + proofStatusTone(status)}>{proofStatusLabels[status]}</span></div><div className="mt-4 grid gap-4 lg:grid-cols-2">{claims.map((claim) => <ClaimCard key={claim.id} claim={claim} />)}</div></section>;
 }
 
@@ -100,5 +111,6 @@ function ClaimCard({ claim }: { claim: ProofClaim }) {
 }
 
 function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-xl bg-white/[0.05] px-3 py-3"><p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">{label}</p><p className="mt-1 font-mono text-lg text-cyan-200">{value}</p></div>; }
+function ReviewLens({ title, body, href }: { title: string; body: string; href: string }) { return <Link href={href} className="group rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-cyan-300/40 hover:bg-cyan-300/5"><h3 className="text-sm font-semibold text-white">{title} <span aria-hidden className="text-cyan-300 transition group-hover:translate-x-0.5">→</span></h3><p className="mt-2 text-xs leading-5 text-slate-400">{body}</p></Link>; }
 function formatRate(value: number | null) { return value == null ? "—" : String(Math.round(value * 100)) + "%"; }
 function FlowStep({ number, title, body, tone }: { number: string; title: string; body: string; tone: "cyan" | "indigo" | "amber" | "emerald" | "rose" }) { const tones = { cyan: "border-cyan-300/20 bg-cyan-300/5", indigo: "border-indigo-300/20 bg-indigo-300/5", amber: "border-amber-300/20 bg-amber-300/5", emerald: "border-emerald-300/20 bg-emerald-300/5", rose: "border-rose-300/20 bg-rose-300/5" }; return <div className={"rounded-2xl border p-4 " + tones[tone]}><span className="font-mono text-[10px] text-slate-400">{number}</span><h3 className="mt-3 text-sm font-semibold">{title}</h3><p className="mt-2 text-xs leading-5 text-slate-300">{body}</p></div>; }

@@ -13,6 +13,7 @@ import { dbAdmin, schema } from "@/db";
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import { createSessionToken, type SessionPayload } from "@/lib/auth/session";
 import { findPublicConnection, connectionSecret, identityForSubject } from "@/server/services/identity";
+import type { Role } from "@/lib/auth/rbac";
 
 const STATE_COOKIE = "workbench_oidc_state";
 const CALLBACK_PATH = "/api/auth/oidc/callback";
@@ -61,14 +62,23 @@ export async function finishAuthorizationRequest(input: { requestUrl: URL; state
     const existingUser = await dbAdmin.query.users.findFirst({ where: eq(schema.users.email, email) });
     if (existingUser) userId = existingUser.id;
     if (!userId && connection.jitEnabled && domainAllowed(email, connection.allowedDomains)) {
+      const mappedRole = mappedRoleFromClaims(connection.groupMappings, claims);
       const inserted = await dbAdmin.insert(schema.users).values({ email, name: displayName(claims, email), passwordHash: null }).returning({ id: schema.users.id });
       userId = inserted[0].id;
-      await dbAdmin.insert(schema.memberships).values({ userId, orgId: connection.orgId, role: "customer_stakeholder", active: true, sessionVersion: 1 });
+      await dbAdmin.insert(schema.memberships).values({ userId, orgId: connection.orgId, role: mappedRole ?? "customer_stakeholder", active: true, sessionVersion: 1 });
     }
   }
   if (!userId) throw new Error("This account has not been provisioned for the organization");
-  const membership = await dbAdmin.query.memberships.findFirst({ where: and(eq(schema.memberships.orgId, connection.orgId), eq(schema.memberships.userId, userId)) });
+  let membership = await dbAdmin.query.memberships.findFirst({ where: and(eq(schema.memberships.orgId, connection.orgId), eq(schema.memberships.userId, userId)) });
   if (!membership || !membership.active) throw new Error("Your organization access is suspended");
+  const mappedRole = mappedRoleFromClaims(connection.groupMappings, claims);
+  if (mappedRole && membership.role !== mappedRole) {
+    const [updated] = await dbAdmin.update(schema.memberships)
+      .set({ role: mappedRole, sessionVersion: membership.sessionVersion + 1 })
+      .where(and(eq(schema.memberships.id, membership.id), eq(schema.memberships.orgId, connection.orgId)))
+      .returning();
+    if (updated) membership = updated;
+  }
   const user = await dbAdmin.query.users.findFirst({ where: eq(schema.users.id, userId) });
   if (!user) throw new Error("User account is unavailable");
   if (existingIdentity) {
@@ -87,6 +97,27 @@ function displayName(claims: Record<string, unknown>, email: string) {
 function domainAllowed(email: string, domains: string[]) {
   const domain = email.split("@")[1]?.toLowerCase();
   return Boolean(domain && domains.some((allowed) => allowed.toLowerCase() === domain));
+}
+
+const OIDC_ROLES: ReadonlySet<Role> = new Set([
+  "org_admin",
+  "implementation_manager",
+  "solutions_engineer",
+  "customer_stakeholder",
+]);
+
+/** Resolve one unambiguous Workbench role from an IdP's `groups` claim. */
+export function mappedRoleFromClaims(
+  mappings: Record<string, Role> | null | undefined,
+  claims: Record<string, unknown>,
+): Role | null {
+  if (!mappings || typeof mappings !== "object") return null;
+  const groups = Array.isArray(claims.groups)
+    ? claims.groups.filter((value): value is string => typeof value === "string")
+    : [];
+  const roles = Array.from(new Set(groups.map((group) => mappings[group]).filter((role): role is Role => Boolean(role && OIDC_ROLES.has(role)))));
+  if (roles.length > 1) throw new Error("OIDC role mapping is ambiguous");
+  return roles[0] ?? null;
 }
 
 export function safeReturnTo(value: string | null | undefined) {

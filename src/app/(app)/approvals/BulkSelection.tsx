@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -123,6 +124,7 @@ export function BulkActionBar() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const idempotencyKey = useRef<string | null>(null);
 
   const count = selected.size;
   const allSelected = count > 0 && count === items.length;
@@ -135,9 +137,11 @@ export function BulkActionBar() {
   async function submit(decision: "approved" | "rejected") {
     setBusy(true);
     setError(null);
+    const key = idempotencyKey.current ?? crypto.randomUUID();
+    idempotencyKey.current = key;
     const res = await fetch("/api/v1/approvals/bulk", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Idempotency-Key": key },
       body: JSON.stringify({
         approvalIds: [...selected],
         decision,
@@ -152,6 +156,7 @@ export function BulkActionBar() {
     });
 
     if (res.ok) {
+      idempotencyKey.current = null;
       const data = (await res.json().catch(() => ({}))) as { summary?: string };
       setSummary(data.summary ?? "Done");
       setSelected(new Set());

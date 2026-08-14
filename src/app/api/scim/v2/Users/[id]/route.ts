@@ -36,7 +36,7 @@ async function modify(request: NextRequest, route: { params: Promise<Params> }, 
     const ifMatch = request.headers.get("if-match");
     if (ifMatch && ifMatch !== expectedTag) return NextResponse.json(scimError(412, "Resource changed since it was read"), { status: 412 });
     const input = (await request.json()) as Record<string, unknown>;
-    const user = await updateScimUser(context.orgId, id, replace && Array.isArray(input.Operations) ? applyPatchOperations(input) : input, replace);
+    const user = await updateScimUser(context.orgId, id, !replace && Array.isArray(input.Operations) ? applyPatchOperations(input) : input, replace);
     if (!user) return NextResponse.json(scimError(404, "User not found"), { status: 404 });
     return NextResponse.json(await userResource(request, context.orgId, user), { headers: { ETag: resourceEtag([user.id, user.createdAt.getTime(), user.externalId, user.name, user.email]) } });
   } catch (error) {

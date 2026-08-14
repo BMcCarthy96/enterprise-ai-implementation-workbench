@@ -9,7 +9,7 @@ const failures: string[] = [];
 for (const claim of proofClaims) {
   if (!claim.id || !claim.title || !claim.summary) failures.push("Claim " + (claim.id || "<missing>") + " is incomplete");
   if (claim.evidence.length === 0) failures.push("Claim " + claim.id + " has no evidence");
-  if (claim.status === "verified" && !claim.evidence.some((evidence) => ["test", "ci", "api", "artifact", "runbook"].includes(evidence.kind))) {
+  if (["verified", "ci_verified", "staging_observed"].includes(claim.status) && !claim.evidence.some((evidence) => ["test", "ci", "api", "artifact", "runbook"].includes(evidence.kind))) {
     failures.push("Verified claim " + claim.id + " needs executable or documentary evidence");
   }
   for (const evidence of claim.evidence) {

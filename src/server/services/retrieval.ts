@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { embeddingProvider, type EmbeddingResult } from "@/lib/ai/embeddings";
@@ -11,12 +12,17 @@ export interface RetrievedSource {
   content: string;
   pageNumber: number | null;
   heading: string | null;
+  vectorScore: number;
+  lexicalScore: number;
+  selectionReason: string;
 }
 
 export interface RetrievalResult {
   sources: RetrievedSource[];
   embedding: EmbeddingResult | null;
   redactionCount: number;
+  queryHash: string | null;
+  retrieverVersion: string;
 }
 
 /**
@@ -38,9 +44,10 @@ export async function retrieveProjectSources(input: {
       AND d.status = 'ready'
     LIMIT 1
   `)) as unknown as unknown[];
-  if (!available.length) return { sources: [], embedding: null, redactionCount: 0 };
+  if (!available.length) return { sources: [], embedding: null, redactionCount: 0, queryHash: null, retrieverVersion: "hybrid-v1" };
   const provider = await embeddingProvider();
   const redacted = redactSensitiveText(input.query);
+  const queryHash = createHash("sha256").update(redacted.text).digest("hex");
   const embedding = await provider.embed(redacted.text);
   const vector = `[${embedding.vector.join(",")}]`;
   const limit = Math.min(Math.max(input.limit ?? 8, 1), 8);
@@ -52,14 +59,17 @@ export async function retrieveProjectSources(input: {
       dc.content AS content,
       dc.page_number AS "pageNumber",
       dc.heading AS heading,
-      d.file_name AS "documentName"
+      d.file_name AS "documentName",
+      (1 - (dc.embedding <=> ${vector}::vector))::double precision AS "vectorScore",
+      ts_rank_cd(to_tsvector('simple', dc.content), plainto_tsquery('simple', ${redacted.text}))::double precision AS "lexicalScore"
     FROM document_chunks dc
     INNER JOIN documents d ON d.id = dc.document_id
     WHERE dc.org_id = ${input.orgId}
       AND dc.project_id = ${input.projectId}
       AND d.status = 'ready'
+      AND dc.embedding IS NOT NULL
       AND (dc.embedding <=> ${vector}::vector) <= ${maxCosineDistance}
-    ORDER BY dc.embedding <=> ${vector}::vector
+    ORDER BY (0.8 * (1 - (dc.embedding <=> ${vector}::vector)) + 0.2 * ts_rank_cd(to_tsvector('simple', dc.content), plainto_tsquery('simple', ${redacted.text}))) DESC
     LIMIT ${limit}
   `)) as unknown as Array<{
     chunkId: string;
@@ -68,15 +78,22 @@ export async function retrieveProjectSources(input: {
     pageNumber: number | null;
     heading: string | null;
     documentName: string;
+    vectorScore: number;
+    lexicalScore: number;
   }>;
   return {
     embedding,
+    queryHash,
+    retrieverVersion: "hybrid-v1",
     redactionCount:
       redacted.counts.email + redacted.counts.phone + redacted.counts.identifier,
     sources: rows.map((row, index) => ({
       ref: `S${index + 1}`,
       ...row,
       content: redactSensitiveText(row.content).text,
+      vectorScore: row.vectorScore,
+      lexicalScore: row.lexicalScore,
+      selectionReason: row.lexicalScore > 0 ? "hybrid vector + lexical match" : "vector similarity match",
     })),
   };
 }

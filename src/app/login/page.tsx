@@ -5,18 +5,16 @@ import { env } from "@/lib/env";
 export default function LoginPage() {
   const defaultConnection = env().OIDC_DEFAULT_CONNECTION;
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
+    <main className="flex min-h-screen items-center justify-center bg-[#f2f6fb] px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-lg font-bold text-white">
-            W
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-300 text-sm font-black text-slate-950 shadow-sm">
+            EA
           </div>
           <h1 className="text-xl font-semibold text-gray-900">
             Implementation Workbench
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Sign in to your workspace
-          </p>
+          <p className="mt-1 text-sm text-gray-600">Secure access to delivery, evidence, and governance</p>
         </div>
         <div className="card p-6">
           <Suspense>
@@ -31,17 +29,7 @@ export default function LoginPage() {
             </a>
           )}
         </div>
-        <div className="card mt-4 p-4 text-xs text-gray-500">
-          <p className="mb-1.5 font-semibold text-gray-600">
-            Demo accounts (password: demo1234)
-          </p>
-          <ul className="space-y-0.5 font-mono">
-            <li>admin@northwind.dev — Operations Admin</li>
-            <li>manager@northwind.dev — Implementation Manager</li>
-            <li>engineer@northwind.dev — Solutions Engineer</li>
-            <li>customer@brightlane.dev — Customer Stakeholder</li>
-          </ul>
-        </div>
+        <p className="mt-4 text-center text-xs leading-5 text-gray-500">For local evaluation, use the seeded accounts documented in the repository README. Public reviewers should use the isolated demo launcher.</p>
       </div>
     </main>
   );

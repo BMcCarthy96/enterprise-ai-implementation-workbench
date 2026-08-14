@@ -77,7 +77,7 @@ export default async function PlanPage({
         {generateButton}
         {trace && (
           <Link href={`/ai-runs/${trace.id}`} className="btn-secondary">
-            View generation trace
+            Inspect AI evidence packet
           </Link>
         )}
       </EmptyState>
@@ -104,11 +104,14 @@ export default async function PlanPage({
           </h2>
           <StatusBadge status={latest.status} />
           <span className="text-xs text-gray-400">
-            {latest.model === "mock" ? "offline model" : latest.model} ·{" "}
-            {latest.promptVersion}
+            {latest.model === "mock" ? "offline model" : latest.model} · {latest.promptVersion}
           </span>
+          {trace && <span className={`badge border ${trace.dataOrigin === "fixture" ? "border-slate-200 bg-slate-50 text-slate-600" : trace.dataOrigin === "mock_run" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{trace.dataOrigin === "fixture" ? "Synthetic scenario" : trace.dataOrigin === "mock_run" ? "Deterministic mock run" : "Live provider run"}</span>}
         </div>
-        {generateButton}
+        <div className="flex flex-wrap items-center gap-2">
+          {trace && can(session.role, "audit.view") && <Link href={`/ai-runs/${trace.id}`} className="btn-secondary">Inspect AI evidence packet</Link>}
+          {generateButton}
+        </div>
       </div>
 
       {latest.status === "pending_approval" && (

@@ -528,7 +528,10 @@ export const milestones = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("milestones_project_idx").on(t.projectId)],
+  (t) => [
+    index("milestones_project_idx").on(t.projectId),
+    uniqueIndex("milestones_plan_sort_unique").on(t.planId, t.sortOrder),
+  ],
 );
 
 export const tasks = pgTable(
@@ -562,6 +565,7 @@ export const tasks = pgTable(
   (t) => [
     index("tasks_project_idx").on(t.projectId),
     index("tasks_assignee_idx").on(t.assigneeId),
+    uniqueIndex("tasks_milestone_sort_unique").on(t.milestoneId, t.sortOrder),
   ],
 );
 
@@ -587,6 +591,8 @@ export const approvals = pgTable(
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     reasonCode: text("reason_code"),
     note: text("note"),
+    decisionKey: text("decision_key"),
+    regenerationJobId: uuid("regeneration_job_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -594,6 +600,7 @@ export const approvals = pgTable(
   (t) => [
     index("approvals_org_status_idx").on(t.orgId, t.status),
     index("approvals_subject_idx").on(t.subjectType, t.subjectId),
+    uniqueIndex("approvals_decision_key_unique").on(t.id, t.decisionKey),
   ],
 );
 
@@ -698,6 +705,13 @@ export const planCitations = pgTable(
       .notNull()
       .references(() => documentChunks.id, { onDelete: "cascade" }),
     location: text("location"),
+    retrieverVersion: text("retriever_version").notNull().default("hybrid-v1"),
+    queryHash: text("query_hash"),
+    rank: integer("rank"),
+    vectorScore: numeric("vector_score", { precision: 10, scale: 8 }),
+    lexicalScore: numeric("lexical_score", { precision: 10, scale: 8 }),
+    selectionReason: text("selection_reason"),
+    redactedExcerpt: text("redacted_excerpt"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -762,6 +776,10 @@ export const jobs = pgTable(
     durationMs: integer("duration_ms"),
     traceId: text("trace_id"),
     traceParent: text("trace_parent"),
+    /** Lease metadata lets a re-delivered message reclaim a crashed worker. */
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -769,6 +787,29 @@ export const jobs = pgTable(
   (t) => [
     index("jobs_org_status_idx").on(t.orgId, t.status),
     index("jobs_dispatch_idx").on(t.status, t.dispatchedAt),
+    index("jobs_lease_idx").on(t.status, t.leaseExpiresAt),
+  ],
+);
+
+export const jobAttempts = pgTable(
+  "job_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    attempt: integer("attempt").notNull(),
+    workerId: text("worker_id"),
+    status: text("status").notNull().default("running"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    durationMs: integer("duration_ms"),
+    error: text("error"),
+    traceId: text("trace_id"),
+  },
+  (t) => [
+    uniqueIndex("job_attempts_job_attempt_unique").on(t.jobId, t.attempt),
+    index("job_attempts_org_started_idx").on(t.orgId, t.startedAt),
+    index("job_attempts_job_idx").on(t.jobId, t.startedAt),
   ],
 );
 
@@ -791,6 +832,7 @@ export const aiRuns = pgTable(
     provider: text("provider").notNull(),
     model: text("model"),
     promptVersion: text("prompt_version"),
+    dataOrigin: text("data_origin").$type<"fixture" | "mock_run" | "live_provider">().notNull().default("live_provider"),
     status: aiRunStatus("status").notNull().default("running"),
     finalOutcome: text("final_outcome"),
     inputTokens: integer("input_tokens").notNull().default(0),

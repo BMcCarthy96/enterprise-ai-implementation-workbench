@@ -4,6 +4,7 @@ import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can, ROLE_LABELS, type Role } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
+import { SettingsNav } from "../SettingsNav";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +90,7 @@ export default async function MembersPage() {
         title="Members"
         subtitle={`People with access to ${session.orgName}`}
       />
+      <SettingsNav active="/settings/members" />
 
       <div className="card mb-6 overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">

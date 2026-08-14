@@ -10,8 +10,16 @@ import { NewProjectButton } from "./NewProjectButton";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = (await getSession())!;
+  const query = (await searchParams) ?? {};
+  const search = typeof query.q === "string" ? query.q.trim().toLowerCase() : "";
+  const status = typeof query.status === "string" ? query.status : "";
+  const customer = typeof query.customer === "string" ? query.customer : "";
 
   const canManage = can(session.role, "projects.manage");
   const { rows, customers } = await withTenantTransaction(
@@ -35,6 +43,11 @@ export default async function ProjectsPage() {
     }),
     session.userId,
   );
+  const filteredRows = rows.filter(({ project, customerName }) =>
+    (!search || `${project.name} ${customerName} ${project.description ?? ""}`.toLowerCase().includes(search)) &&
+    (!status || project.status === status) &&
+    (!customer || project.customerId === customer),
+  );
 
   return (
     <div>
@@ -50,11 +63,21 @@ export default async function ProjectsPage() {
         }
       />
 
+      <form method="get" className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4" aria-label="Filter projects">
+        <label className="min-w-56 flex-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Search projects<input name="q" defaultValue={search} className="input mt-1" placeholder="Project, customer, or description" /></label>
+        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stage<select name="status" defaultValue={status} className="input mt-1"><option value="">All stages</option>{schema.projectStatus.enumValues.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label>
+        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer<select name="customer" defaultValue={customer} className="input mt-1"><option value="">All customers</option>{customers.map((value) => <option key={value.id} value={value.id}>{value.name}</option>)}</select></label>
+        <button type="submit" className="btn-secondary">Apply filters</button>
+        {(search || status || customer) && <Link href="/projects" className="pb-2 text-xs font-semibold text-indigo-700 hover:underline">Clear</Link>}
+      </form>
+
       {rows.length === 0 ? (
         <EmptyState
           title="No projects yet"
           hint="Create a project to start capturing requirements and generating implementation plans."
         />
+      ) : filteredRows.length === 0 ? (
+        <EmptyState title="No projects match those filters" hint="Clear a filter or broaden the search to see the organization portfolio." />
       ) : (
         <div className="card overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -68,7 +91,7 @@ export default async function ProjectsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {rows.map(({ project, customerName }) => (
+              {filteredRows.map(({ project, customerName }) => (
                 <tr key={project.id} className="hover:bg-gray-50">
                   <td className="table-td">
                     <Link

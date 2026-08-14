@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, or } from "drizzle-orm";
 import { afterTransactionCommit, db, dbAdmin, schema } from "@/db";
 import { enqueueJob } from "@/lib/aws/sqs";
 import { ApiError } from "@/lib/api";
@@ -90,6 +90,28 @@ export async function dispatchUndeliveredJobs(limit = 25): Promise<{
   return { attempted: candidates.length, dispatched };
 }
 
+/** Requeue work whose worker lease expired before it could acknowledge the message. */
+export async function reclaimExpiredJobs(limit = 25): Promise<number> {
+  const expired = await dbAdmin
+    .update(schema.jobs)
+    .set({ status: "queued", dispatchedAt: null, leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null })
+    .where(and(
+      eq(schema.jobs.status, "running"),
+      or(isNull(schema.jobs.leaseExpiresAt), lt(schema.jobs.leaseExpiresAt, new Date())),
+    ))
+    .returning({ id: schema.jobs.id });
+  let dispatched = 0;
+  for (const job of expired.slice(0, limit)) {
+    try {
+      await dispatchJob(job.id);
+      dispatched += 1;
+    } catch (error) {
+      jobLog.warn({ jobId: job.id, error: String(error) }, "expired job redispatch failed");
+    }
+  }
+  return dispatched;
+}
+
 export async function createAndEnqueueJob(input: {
   orgId: string;
   projectId?: string;
@@ -145,7 +167,7 @@ export async function retryJob(jobId: string, actorId: string): Promise<void> {
   try {
     await db
       .update(schema.jobs)
-      .set({ status: "queued", lastError: null, attempts: 0, dispatchedAt: null })
+      .set({ status: "queued", lastError: null, attempts: 0, dispatchedAt: null, leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null })
       .where(eq(schema.jobs.id, jobId));
   } catch (error) {
     if (job.type === "plan_generation") throwActivePlanConflict(error);

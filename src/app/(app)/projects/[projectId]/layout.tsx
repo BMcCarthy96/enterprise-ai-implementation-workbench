@@ -47,18 +47,16 @@ export default async function ProjectLayout({
   const tabs = internal
     ? [
         { href: `/projects/${projectId}`, label: "Overview" },
-        { href: `/projects/${projectId}/requirements`, label: "Requirements" },
+        { href: `/projects/${projectId}/requirements`, label: "Scope" },
         { href: `/projects/${projectId}/plan`, label: "Plan" },
-        { href: `/projects/${projectId}/board`, label: "Board" },
-        { href: `/projects/${projectId}/timeline`, label: "Timeline" },
-        { href: `/projects/${projectId}/documents`, label: "Documents" },
-        { href: `/projects/${projectId}/updates`, label: "Updates" },
+        { href: `/projects/${projectId}/board`, label: "Delivery" },
+        { href: `/projects/${projectId}/updates`, label: "Communications" },
         { href: `/projects/${projectId}/activity`, label: "Activity" },
       ]
     : [
         { href: `/projects/${projectId}`, label: "Overview" },
         { href: `/projects/${projectId}/timeline`, label: "Timeline" },
-        { href: `/projects/${projectId}/updates`, label: "Updates" },
+        { href: `/projects/${projectId}/updates`, label: "Communications" },
       ];
 
   return (

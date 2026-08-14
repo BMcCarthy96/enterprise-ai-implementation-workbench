@@ -14,6 +14,10 @@ import {
  * partial success (see `failed[]`) instead of discarding valid decisions.
  */
 export const POST = withAuth("approvals.decide", async (req, { session }) => {
+  const idempotencyKey = req.headers.get("idempotency-key")?.trim();
+  if (!idempotencyKey || idempotencyKey.length > 160) {
+    return NextResponse.json({ error: "Idempotency-Key header is required" }, { status: 400 });
+  }
   const body = await parseBody(req, BulkApprovalDecisionSchema);
   const result = await decideApprovalsBulk({
     approvalIds: body.approvalIds,
@@ -23,6 +27,7 @@ export const POST = withAuth("approvals.decide", async (req, { session }) => {
     reasonCode: body.reasonCode,
     note: body.note,
     regenerate: body.regenerate,
+    idempotencyKey,
   });
 
   return NextResponse.json({

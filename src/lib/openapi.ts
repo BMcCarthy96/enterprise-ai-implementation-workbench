@@ -15,9 +15,9 @@ import {
 } from "@/lib/apiSchemas";
 
 /**
- * OpenAPI 3.1 document for the /api/v1 surface, generated from the same zod
- * schemas the route handlers validate with (zod's native JSON Schema export),
- * so the docs cannot drift from the actual validation rules.
+ * OpenAPI 3.1 document for the /api surface. Request bodies that have a Zod
+ * contract reuse that contract's native JSON Schema; the route registry and
+ * contract tests keep the remaining operational endpoints discoverable.
  */
 
 function body(schema: ZodType) {
@@ -80,6 +80,16 @@ export function buildOpenApiDocument() {
             "200": jsonResponse("All dependencies healthy"),
             "503": jsonResponse("One or more dependencies degraded"),
           },
+        },
+      },
+      "/api/build-metadata": {
+        get: {
+          tags: ["System"],
+          summary: "Return public build and deployment metadata",
+          description:
+            "Public, secret-free metadata used to label proof artifacts by deployment mode, provider mode, database mode, commit, and evidence version.",
+          security: [],
+          responses: { "200": jsonResponse("Build metadata") },
         },
       },
       "/api/auth/login": {
@@ -308,6 +318,7 @@ export function buildOpenApiDocument() {
           tags: ["Approvals"],
           summary:
             "Apply one decision to a selection of approvals (requires approvals.decide). Items are independent audited transactions, so the response is a partial-success report: { succeeded[], failed[], summary }.",
+          parameters: [{ name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", minLength: 1, maxLength: 160 } }],
           requestBody: body(BulkApprovalDecisionSchema),
           responses: {
             "200": jsonResponse("Per-item outcomes (may include failures)"),
@@ -320,12 +331,14 @@ export function buildOpenApiDocument() {
           tags: ["Approvals"],
           summary:
             "Approve or reject (requires approvals.decide). Approving a plan materializes milestones and tasks; approving an update publishes it. Rejecting a plan with regenerate=true queues a revised version that carries the reason + note back into the prompt.",
-          parameters: [pathParam("approvalId")],
+          parameters: [pathParam("approvalId"), { name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", minLength: 1, maxLength: 160 } }],
           requestBody: body(ApprovalDecisionSchema),
           responses: {
             "200": jsonResponse("Decision applied"),
-            "409": { description: "Already decided" },
             ...STD,
+            "400": { description: "Missing or invalid Idempotency-Key" },
+            "403": { description: "Maker-checker policy denied the decision" },
+            "409": { description: "Already decided" },
           },
         },
       },

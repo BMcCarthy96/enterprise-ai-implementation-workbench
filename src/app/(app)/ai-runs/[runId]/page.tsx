@@ -26,8 +26,15 @@ export default async function AiRunDetailPage({
         <PageHeader
           title="AI evidence packet"
           subtitle={`${packet.run.artifactType.replace("_", " ")} · ${packet.run.provider} · ${packet.run.promptVersion ?? "unversioned"}`}
-          actions={<Link href="/ai-runs" className="btn-secondary">Back to evidence center</Link>}
+          actions={<div className="flex flex-wrap gap-2">{packet.artifact && <Link href={packet.artifact.href} className="btn-secondary">Open generated artifact</Link>}<Link href="/ai-runs" className="btn-secondary">Back to evidence center</Link></div>}
         />
+
+        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
+          <span className="font-semibold text-slate-900">Data origin</span>
+          <span className={`badge ${packet.run.dataOrigin === "fixture" ? "bg-slate-100 text-slate-700" : packet.run.dataOrigin === "mock_run" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>{packet.run.dataOrigin === "fixture" ? "Synthetic scenario" : packet.run.dataOrigin === "mock_run" ? "Deterministic mock run" : "Live provider run"}</span>
+          <span className="text-slate-300">·</span>
+          <span>Trace ID <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px]">{packet.run.id}</code></span>
+        </div>
 
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-7">
           {[
@@ -37,7 +44,7 @@ export default async function AiRunDetailPage({
             ["Input tokens", `${packet.run.inputTokens}`],
             ["Output tokens", `${packet.run.outputTokens}`],
             ["Redactions", `${packet.run.redactionCount}`],
-            ["Cost", packet.run.costUsd == null ? "—" : `$${Number(packet.run.costUsd).toFixed(4)}`],
+            ["Cost", packet.run.costUsd == null ? (packet.run.dataOrigin === "fixture" ? "Not priced" : "—") : `$${Number(packet.run.costUsd).toFixed(4)}`],
           ].map(([label, value]) => (
             <div key={label} className="card p-4">
               <p className="text-[11px] uppercase tracking-wide text-gray-400">{label}</p>
@@ -112,7 +119,7 @@ export default async function AiRunDetailPage({
               <h2 className="text-sm font-semibold text-gray-900">Grounding coverage</h2>
               <p className="mt-1 text-xs text-gray-500">Opaque citation refs and requirement links are counted without exposing source text.</p>
               {packet.coverage ? <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-lg bg-slate-50 p-3"><p className="text-2xl font-semibold text-slate-900">{packet.coverage.requirementsCovered}/{packet.coverage.requirementsTotal}</p><p className="mt-1 text-xs text-gray-500">requirements covered</p></div><div className="rounded-lg bg-slate-50 p-3"><p className="text-2xl font-semibold text-slate-900">{packet.coverage.citationsUsed}/{packet.coverage.citationsTotal}</p><p className="mt-1 text-xs text-gray-500">citation refs used</p></div></div> : <p className="mt-4 text-sm text-gray-400">Coverage is unavailable for this artifact type.</p>}
-              <div className="mt-4 space-y-2">{packet.citations.map((citation) => <div key={citation.id} className="rounded-md border border-gray-100 bg-slate-50 px-3 py-2 text-xs"><span className="font-mono font-semibold text-indigo-700">{citation.sourceRef}</span><span className="ml-2 text-gray-600">{citation.location ?? "document chunk"}</span></div>)}{!packet.citations.length && <p className="text-sm text-gray-400">No document citations on this run.</p>}</div>
+              <div className="mt-4 space-y-2">{packet.citations.map((citation) => <div key={citation.id} className="rounded-md border border-gray-100 bg-slate-50 px-3 py-2 text-xs"><div><span className="font-mono font-semibold text-indigo-700">{citation.sourceRef}</span><span className="ml-2 text-gray-600">{citation.location ?? "document chunk"}</span></div><p className="mt-1 text-[11px] text-gray-400">{citation.retrieverVersion} · rank {citation.rank ?? "—"} · vector {citation.vectorScore ?? "—"} · lexical {citation.lexicalScore ?? "—"}</p>{citation.selectionReason && <p className="mt-1 text-[11px] text-gray-500">{citation.selectionReason}</p>}</div>)}{!packet.citations.length && <p className="text-sm text-gray-400">No document citations on this run.</p>}</div>
             </section>
           </div>
         </div>

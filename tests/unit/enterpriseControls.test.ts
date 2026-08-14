@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
 import { encryptSecret, decryptSecret, hashSecret } from "@/lib/crypto";
-import { validateWebhookUrl, verifyWebhookSignature } from "@/server/services/webhooks";
+import { isBlockedHost, validateWebhookUrl, verifyWebhookSignature } from "@/server/services/webhooks";
 import { validateRetentionPolicy } from "@/server/services/retention";
 
 describe("enterprise controls", () => {
@@ -14,6 +14,9 @@ describe("enterprise controls", () => {
 
   it("rejects private webhook targets", () => {
     expect(() => validateWebhookUrl("http://127.0.0.1:8787/events")).toThrow(/private/i);
+    expect(isBlockedHost("::ffff:127.0.0.1")).toBe(true);
+    expect(isBlockedHost("fe80::1")).toBe(true);
+    expect(isBlockedHost("2001:db8::1")).toBe(true);
     expect(validateWebhookUrl("https://example.com/events").hostname).toBe("example.com");
   });
 

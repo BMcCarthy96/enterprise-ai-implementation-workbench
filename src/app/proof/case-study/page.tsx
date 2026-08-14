@@ -9,7 +9,7 @@ export const metadata = {
 
 export default function CaseStudyPage() {
   const manifest = getProofManifest();
-  const statuses: ProofStatus[] = ["verified", "implemented", "target", "planned"];
+  const statuses: ProofStatus[] = ["ci_verified", "staging_observed", "implemented", "target", "planned"];
   return (
     <main className="min-h-screen bg-white text-gray-900">
       <div className="mx-auto max-w-4xl px-6 py-10 print:max-w-none print:px-0">

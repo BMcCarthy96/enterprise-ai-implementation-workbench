@@ -10,6 +10,13 @@ import { RetryJobButton } from "./RetryJobButton";
 
 export const dynamic = "force-dynamic";
 
+const JOB_TYPE_LABELS: Record<string, string> = {
+  plan_generation: "Plan generation",
+  customer_update_digest: "Update digest",
+  document_ingest: "Document ingest",
+  webhook_delivery: "Webhook delivery",
+};
+
 export default async function OpsPage() {
   const session = (await getSession())!;
   if (!can(session.role, "ops.view")) redirect("/dashboard");
@@ -125,6 +132,7 @@ export default async function OpsPage() {
           <span>Webhook delivery: {deliveries.length ? Math.round((deliveredWebhooks / deliveries.length) * 100) + "% in 30d" : "no sample"}</span>
           <span>Retention ledger: {lastRetentionRun?.status ?? "not run"}</span>
           <span>Trace correlation: persisted on queued jobs</span>
+          <span>Lease recovery: {jobs.some((item) => item.job.leaseOwner) ? "worker heartbeat observed" : "ready; no active lease"}</span>
         </div>
       </section>
 
@@ -142,6 +150,7 @@ export default async function OpsPage() {
                 <th className="table-th">Project</th>
                 <th className="table-th">Status</th>
                 <th className="table-th">Attempts</th>
+                <th className="table-th">Lease</th>
                 <th className="table-th">Duration</th>
                 <th className="table-th">Created</th>
                 <th className="table-th">Error</th>
@@ -152,9 +161,7 @@ export default async function OpsPage() {
               {jobs.map(({ job, projectName }) => (
                 <tr key={job.id}>
                   <td className="table-td whitespace-nowrap">
-                    {job.type === "plan_generation"
-                      ? "Plan generation"
-                      : "Update digest"}
+                    {JOB_TYPE_LABELS[job.type] ?? job.type.replaceAll("_", " ")}
                   </td>
                   <td className="table-td max-w-40 truncate text-xs">
                     {projectName ?? "—"}
@@ -164,6 +171,15 @@ export default async function OpsPage() {
                   </td>
                   <td className="table-td">
                     {job.attempts}/{job.maxAttempts}
+                  </td>
+                  <td className="table-td max-w-44 text-xs text-gray-500">
+                    {job.status === "running" ? (
+                      <span title={job.leaseOwner ?? undefined}>
+                        {job.leaseExpiresAt && job.leaseExpiresAt > now
+                          ? `heartbeat · expires ${job.leaseExpiresAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
+                          : "lease expired · reclaiming"}
+                      </span>
+                    ) : "—"}
                   </td>
                   <td className="table-td">
                     {job.durationMs != null

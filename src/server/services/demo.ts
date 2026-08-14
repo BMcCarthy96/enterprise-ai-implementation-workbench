@@ -499,12 +499,15 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           provider: "mock",
           model: "mock",
           promptVersion: PROMPT_VERSION,
+          dataOrigin: "fixture",
           status: "succeeded",
           finalOutcome: "repaired",
           inputTokens: 1200,
           outputTokens: 900,
-          costUsd: "0.01500000",
-          pricingVersion: "config-v1",
+          // Fixture telemetry is intentionally not priced. Live/provider runs
+          // calculate cost only when a versioned model price is known.
+          costUsd: null,
+          pricingVersion: null,
           latencyMs: 2350,
           startedAt: demoDaysAgo(17),
           finishedAt: demoDaysAgo(17, 0.01),
@@ -767,7 +770,9 @@ Brightlane wants a controlled order intake workflow for approved source systems.
         subjectType: "plan",
         subjectId: claimsPlan.id,
         status: "pending",
-        requestedBy: userId,
+        // The engineer produced this AI plan; the manager must be the
+        // independent reviewer in the seeded maker-checker walkthrough.
+        requestedBy: personaUserIds.solutions_engineer,
         createdAt: demoDaysAgo(2),
       }).returning({ id: schema.approvals.id });
       const [deadLetterJob] = await tx

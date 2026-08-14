@@ -31,7 +31,7 @@ Trust is enforced in layers with different jobs: the prompt constrains format an
 
 ## Measured evidence
 
-- The committed offline fixture suite covers 15 synthetic cases × 3 prompt variants, including retrieval-on/retrieval-off pairs: 100% schema validity, requirement coverage, and citation/injection gates, with a hard regression check.
+- The committed **Deterministic Contract Regression Suite** covers 15 synthetic cases × 3 prompt variants, including retrieval-on/retrieval-off pairs. Its perfect schema/coverage/citation/injection score proves the offline contract harness; it is not presented as a live-model quality benchmark.
 - Every generated plan carries `model` and `promptVersion`; every AI run carries provider/model, usage source, versioned pricing, latency, repair outcome, and sanitized error classification.
 - The AI Evidence Center makes retrieval, generation, repair, guardrails, automated checks, requirement/citation coverage, artifact links, and approval outcomes inspectable. Raw production prompts, source text, and model output are intentionally excluded; legacy runs remain readable with a clear “not recorded” state.
 - The committed offline scorecard records the complete grader matrix, hard-gate status, baseline delta, suite version, case categories, provider, and freshness separately from live traces.

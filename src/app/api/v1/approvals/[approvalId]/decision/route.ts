@@ -11,6 +11,10 @@ export const POST = withAuth<Params>(
   async (req, { session }, params) => {
     const approvalId = uuidParam(params.approvalId, "approvalId");
     const body = await parseBody(req, ApprovalDecisionSchema);
+    const idempotencyKey = req.headers.get("idempotency-key")?.trim();
+    if (!idempotencyKey || idempotencyKey.length > 160) {
+      return NextResponse.json({ error: "Idempotency-Key header is required" }, { status: 400 });
+    }
     const result = await decideApproval({
       approvalId,
       orgId: session.orgId,
@@ -19,6 +23,7 @@ export const POST = withAuth<Params>(
       reasonCode: body.reasonCode,
       note: body.note,
       regenerate: body.regenerate,
+      idempotencyKey,
     });
     return NextResponse.json({
       ok: true,

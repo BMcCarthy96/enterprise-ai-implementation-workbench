@@ -43,8 +43,15 @@ jobs:
           retention-days: 14
       - run: npm run eval:offline
       - run: npm run eval:check
-      - run: npm run proof:check
-      - run: npm run proof:bundle
+      - name: Validate proof registry
+        run: npm run proof:check
+      - name: Build proof bundle with CI provenance
+        run: npm run proof:bundle
+        env:
+          PROOF_EVIDENCE_SHA: ${{ github.sha }}
+          PROOF_EVIDENCE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PROOF_EVIDENCE_COMMAND: npm run lint && npm run typecheck && npm test && npm run build
+          PROOF_EVIDENCE_VERIFIED_AT: ${{ github.event.head_commit.timestamp || github.run_started_at }}
       - name: Upload recruiter evidence bundle
         if: always()
         uses: actions/upload-artifact@v4
@@ -117,11 +124,22 @@ jobs:
         run: |
           npm run db:migrate
           npm run db:seed
+      - name: Start worker for flagship async flow
+        env:
+          E2E_WORKER: "1"
+        run: |
+          nohup npm run worker > worker.log 2>&1 &
+          echo $! > worker.pid
+          sleep 3
       - name: Run e2e tests
+        env:
+          E2E_WORKER: "1"
         run: npx playwright test
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            worker.log
           retention-days: 7
