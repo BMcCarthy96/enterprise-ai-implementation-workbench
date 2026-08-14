@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createSessionToken,
+  sessionMembershipIsCurrent,
   verifySessionToken,
   type SessionPayload,
 } from "@/lib/auth/session";
@@ -29,5 +30,28 @@ describe("session tokens", () => {
 
   it("rejects garbage", async () => {
     expect(await verifySessionToken("not-a-jwt")).toBeNull();
+  });
+
+  it("invalidates inactive or version-changed organization access", () => {
+    const versioned = {
+      ...payload,
+      membershipId: "33333333-3333-3333-3333-333333333333",
+      sessionVersion: 4,
+    };
+    const current = {
+      id: versioned.membershipId,
+      orgId: versioned.orgId,
+      userId: versioned.userId,
+      active: true,
+      sessionVersion: 4,
+    };
+    expect(sessionMembershipIsCurrent(versioned, current)).toBe(true);
+    expect(
+      sessionMembershipIsCurrent(versioned, { ...current, active: false }),
+    ).toBe(false);
+    expect(
+      sessionMembershipIsCurrent(versioned, { ...current, sessionVersion: 5 }),
+    ).toBe(false);
+    expect(sessionMembershipIsCurrent(payload, current)).toBe(false);
   });
 });

@@ -98,12 +98,12 @@ export default async function PlanPage({
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-base font-semibold text-gray-900">
             Plan v{latest.version}
           </h2>
           <StatusBadge status={latest.status} />
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-gray-500">
             {latest.model === "mock" ? "offline model" : latest.model} · {latest.promptVersion}
           </span>
           {trace && <span className={`badge border ${trace.dataOrigin === "fixture" ? "border-slate-200 bg-slate-50 text-slate-600" : trace.dataOrigin === "mock_run" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{trace.dataOrigin === "fixture" ? "Synthetic scenario" : trace.dataOrigin === "mock_run" ? "Deterministic mock run" : "Live provider run"}</span>}
@@ -197,7 +197,7 @@ export default async function PlanPage({
                     </span>
                     <p className="text-sm font-medium text-gray-900">{m.name}</p>
                     {m.durationWeeks && (
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-gray-500">
                         ~{m.durationWeeks} wk
                       </span>
                     )}
@@ -212,7 +212,7 @@ export default async function PlanPage({
                         <span className="text-gray-300">•</span>
                         <span className="text-gray-700">{t.title}</span>
                         {t.estimateHours && (
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-gray-500">
                             {t.estimateHours}h
                           </span>
                         )}

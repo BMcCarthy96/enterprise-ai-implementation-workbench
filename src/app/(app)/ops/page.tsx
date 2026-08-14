@@ -69,7 +69,7 @@ export default async function OpsPage() {
     : 0;
   const deliveredWebhooks = deliveries.filter((delivery) => delivery.status === "delivered").length;
   const queueObserved = oldestQueuedSeconds ? "Oldest " + oldestQueuedSeconds + "s" : "No queued jobs";
-  const generationObserved = total ? Math.round((succeeded / total) * 100) + "% recent" : "No sample";
+  const jobTerminalObserved = total ? Math.round((succeeded / total) * 100) + "% recent" : "No sample";
 
   return (
     <div>
@@ -118,7 +118,7 @@ export default async function OpsPage() {
             ["Availability", "99.5% / 30d", "Not measured"],
             ["Non-AI API p95", "< 750 ms", "Tracing enabled"],
             ["Queue start", "95% < 60s", queueObserved],
-            ["Generation terminal", "95% success", generationObserved],
+            ["Job terminal success", "95% success", jobTerminalObserved],
             ["DR objective", "24h RPO · 4h RTO", "Not exercised"],
           ].map(([label, target, observed]) => (
             <div key={label} className="rounded-lg border border-amber-100 bg-white/80 p-3">

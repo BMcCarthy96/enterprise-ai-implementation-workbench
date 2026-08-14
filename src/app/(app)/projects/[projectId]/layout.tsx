@@ -50,6 +50,8 @@ export default async function ProjectLayout({
         { href: `/projects/${projectId}/requirements`, label: "Scope" },
         { href: `/projects/${projectId}/plan`, label: "Plan" },
         { href: `/projects/${projectId}/board`, label: "Delivery" },
+        { href: `/projects/${projectId}/timeline`, label: "Timeline" },
+        { href: `/projects/${projectId}/documents`, label: "Documents" },
         { href: `/projects/${projectId}/updates`, label: "Communications" },
         { href: `/projects/${projectId}/activity`, label: "Activity" },
       ]

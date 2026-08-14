@@ -9,6 +9,16 @@ async function login(page: Page, email: string) {
   await page.waitForURL("**/dashboard");
 }
 
+async function minimizeRecruiterMode(page: Page) {
+  const panel = page.getByTestId("recruiter-mode-panel");
+  await expect(panel).toHaveAttribute("aria-hidden", "false");
+  await panel
+    .getByRole("button", { name: "Minimize Recruiter Mode" })
+    .click();
+  await expect(panel).toHaveAttribute("aria-hidden", "true");
+  await expect(page.getByTestId("tour-open")).toBeVisible();
+}
+
 test.describe("interactive recruiter demo", () => {
   test("launches with delivery, governance, AI, and operations evidence", async ({
     page,
@@ -45,8 +55,13 @@ test.describe("interactive recruiter demo", () => {
     const panel = page.getByTestId("recruiter-mode-panel");
     await expect(panel).toBeVisible();
     await expect(panel.getByText("Tell the implementation story")).toBeVisible();
-    await panel.getByRole("button", { name: "Minimize product tour" }).click();
+    await panel.getByRole("button", { name: "Minimize Recruiter Mode" }).click();
     await expect(page.getByTestId("tour-open")).toBeVisible();
+    await expect(page.getByTestId("tour-open")).toBeFocused();
+    const quota = page.getByTestId("demo-quota");
+    await expect(quota.getByText("Isolated demo", { exact: true })).toBeVisible();
+    await quota.locator("summary").click();
+    await expect(quota.getByText(/Synthetic workspace · expires/)).toBeVisible();
     await page.getByTestId("tour-open").click();
     await expect(panel).toBeVisible();
     await page.reload();
@@ -54,9 +69,11 @@ test.describe("interactive recruiter demo", () => {
   });
 
   test("switches among seeded demo personas while preserving RBAC", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
+    await minimizeRecruiterMode(page);
     const bar = page.getByTestId("demo-role-bar");
     await expect(bar).toBeVisible();
     await expect(bar.getByTestId("demo-role-implementation_manager")).toHaveAttribute("aria-pressed", "true");
@@ -69,6 +86,9 @@ test.describe("interactive recruiter demo", () => {
     await bar.getByTestId("demo-role-customer_stakeholder").click();
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Operations" })).toHaveCount(0);
 
+    await bar.getByTestId("demo-role-org_admin").click();
+    await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Settings" })).toBeVisible();
+
     await bar.getByTestId("demo-role-implementation_manager").click();
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "AI Evidence" })).toBeVisible();
   });
@@ -78,11 +98,21 @@ test.describe("interactive recruiter demo", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
+    await minimizeRecruiterMode(page);
     await expect(page.getByRole("button", { name: /Open navigation/ })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.getByRole("button", { name: /Open navigation/ }).click();
-    await expect(page.getByRole("navigation", { name: "Mobile main navigation" })).toBeVisible();
+    const mobileNav = page.getByRole("navigation", { name: "Mobile main navigation" });
+    await expect(mobileNav).toBeVisible();
+    await expect(mobileNav.getByRole("button", { name: "Open search" })).toBeVisible();
+    await expect(mobileNav.getByRole("button", { name: "Sign out" })).toBeVisible();
+    await mobileNav.getByRole("button", { name: "Open search" }).click();
+    await expect(page.getByRole("dialog", { name: "Global search" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("demo-role-org_admin").click();
+    await expect(page.getByTestId("demo-role-org_admin")).toHaveAttribute("aria-pressed", "true");
     await page.goto("/settings");
+    await expect(page).toHaveURL(/\/settings\/?$/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 
@@ -103,12 +133,13 @@ test.describe("interactive recruiter demo", () => {
   });
 
   test("keeps recruiter mode usable on a narrow viewport", async ({ page }) => {
-    await page.setViewportSize({ width: 768, height: 900 });
+    await page.setViewportSize({ width: 1024, height: 900 });
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
     await expect(page.getByTestId("recruiter-mode-panel")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(await page.locator("#main-content").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(700);
     await expect(page.locator("#portfolio-health-heading")).toBeVisible();
   });
 });
@@ -172,6 +203,8 @@ test.describe("seeded delivery data", () => {
     await page.goto("/projects");
     await page.getByRole("link", { name: "Order Intake Automation" }).click();
     const tabs = page.getByRole("navigation", { name: "Project sections" });
+    await expect(tabs.getByRole("link", { name: "Timeline" })).toBeVisible();
+    await expect(tabs.getByRole("link", { name: "Documents" })).toBeVisible();
     await tabs.getByRole("link", { name: "Delivery" }).click();
     // Column headers use exact, case-sensitive text so they don't collide with
     // the lowercase "in progress" <option>s inside each card's status select.
@@ -483,6 +516,22 @@ test.describe("global search palette", () => {
     expect(mgr.results.some((r: { type: string }) => r.type === "customer")).toBe(
       true,
     );
+  });
+});
+
+test.describe("enterprise settings", () => {
+  test("shows and requires acknowledgement of a webhook signing secret", async ({ page }) => {
+    await login(page, "admin@northwind.dev");
+    await page.goto("/settings/integrations");
+    await expect(page).toHaveURL(/\/settings\/integrations\/?$/);
+    await page.getByLabel("HTTPS endpoint").fill(`https://example.com/workbench-${Date.now()}`);
+    await page.getByLabel("Event").selectOption("task.status_changed");
+    await page.getByRole("button", { name: "Add endpoint" }).click();
+    await expect(page.getByTestId("webhook-signing-secret")).toContainText("whsec_");
+    await expect(page.getByRole("button", { name: "Save current secret first" })).toBeDisabled();
+    await page.getByRole("button", { name: "I've saved it" }).click();
+    await expect(page.getByTestId("webhook-signing-secret")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Add endpoint" })).toBeEnabled();
   });
 });
 

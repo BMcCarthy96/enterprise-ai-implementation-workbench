@@ -68,7 +68,7 @@ export function DocumentUploader({ projectId }: { projectId: string }) {
           e.target.value = "";
         }}
       />
-      {busy && <p className="mt-2 text-xs text-gray-400">Uploading...</p>}
+      {busy && <p className="mt-2 text-xs text-gray-500">Uploading...</p>}
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </div>
   );
@@ -125,7 +125,7 @@ export function DocumentList({
               <p className="truncate text-sm font-medium text-gray-900">
                 {d.fileName}
               </p>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-500">
                 {formatBytes(d.sizeBytes)} ·{" "}
                 {new Date(d.createdAt).toLocaleDateString("en-US", {
                   month: "short",

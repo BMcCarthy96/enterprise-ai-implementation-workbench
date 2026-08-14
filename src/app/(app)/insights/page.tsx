@@ -45,7 +45,7 @@ function Stat({
         {value}
       </p>
       <p className="mt-1 text-sm text-gray-500">{label}</p>
-      {hint && <p className="mt-0.5 text-xs text-gray-400">{hint}</p>}
+      {hint && <p className="mt-0.5 text-xs text-gray-500">{hint}</p>}
     </div>
   );
 }
@@ -93,7 +93,7 @@ export default async function InsightsPage() {
       />
 
       {/* AI quality — the eval story */}
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
         AI output quality
       </h2>
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -161,7 +161,7 @@ export default async function InsightsPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="text-xs uppercase tracking-wide text-gray-400">
+                <tr className="text-xs uppercase tracking-wide text-gray-500">
                   <th className="py-1 text-left font-semibold">Prompt version</th>
                   <th className="py-1 text-right font-semibold">Plans</th>
                   <th className="py-1 text-right font-semibold">Approved</th>
@@ -185,7 +185,7 @@ export default async function InsightsPage() {
                 ))}
                 {i.byPromptVersion.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-4 text-center text-gray-400">
+                    <td colSpan={4} className="py-4 text-center text-gray-500">
                       No plans generated yet.
                     </td>
                   </tr>
@@ -212,7 +212,7 @@ export default async function InsightsPage() {
       </div>
 
       {/* Delivery health */}
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
         Delivery health
       </h2>
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">

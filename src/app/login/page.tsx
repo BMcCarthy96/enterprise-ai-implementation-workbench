@@ -3,9 +3,11 @@ import { LoginForm } from "./LoginForm";
 import { env } from "@/lib/env";
 
 export default function LoginPage() {
-  const defaultConnection = env().OIDC_DEFAULT_CONNECTION;
+  const configuration = env();
+  const defaultConnection = configuration.OIDC_DEFAULT_CONNECTION;
+  const passwordLoginEnabled = configuration.WORKBENCH_ENV_MODE !== "showcase";
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f2f6fb] px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-300 text-sm font-black text-slate-950 shadow-sm">
@@ -18,7 +20,7 @@ export default function LoginPage() {
         </div>
         <div className="card p-6">
           <Suspense>
-            <LoginForm />
+            <LoginForm passwordLoginEnabled={passwordLoginEnabled} />
           </Suspense>
           {defaultConnection && (
             <a
@@ -29,7 +31,7 @@ export default function LoginPage() {
             </a>
           )}
         </div>
-        <p className="mt-4 text-center text-xs leading-5 text-gray-500">For local evaluation, use the seeded accounts documented in the repository README. Public reviewers should use the isolated demo launcher.</p>
+        <p className="mt-4 text-center text-xs leading-5 text-muted-foreground">{passwordLoginEnabled ? "For local evaluation, use the seeded accounts documented in the repository README." : "Public showcase mode accepts isolated demo sessions and configured enterprise SSO only."}</p>
       </div>
     </main>
   );

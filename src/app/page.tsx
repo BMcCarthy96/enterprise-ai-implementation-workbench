@@ -36,14 +36,15 @@ export default function Home() {
             <div className="glow-orb absolute -right-16 -top-20 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
             <div className="relative rounded-3xl border border-white/10 bg-white/[0.06] p-4 shadow-2xl shadow-cyan-950/30 backdrop-blur">
               <div className="rounded-2xl border border-white/10 bg-[#0b1728] p-5">
-                <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4"><div><p className="text-xs uppercase tracking-[0.18em] text-slate-400">AI quality / recorded trace</p><p className="mt-1 text-sm font-semibold">Order intake implementation</p></div><span className="shrink-0 rounded-full bg-emerald-300/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">APPROVAL READY</span></div>
+                <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4"><div><p className="text-xs uppercase tracking-[0.18em] text-slate-400">AI evidence / deterministic fixture</p><p className="mt-1 text-sm font-semibold">Order intake implementation</p></div><span className="shrink-0 rounded-full bg-emerald-300/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">APPROVAL READY</span></div>
                 <div className="mt-5 space-y-3">
-                  <TraceRow number="01" label="Retrieve project brief" detail="8 scoped chunks · HNSW" tone="cyan" />
-                  <TraceRow number="02" label="Generate structured plan" detail="Claude · plan-v1.1 · 1,200 in / 900 out" tone="indigo" />
-                  <TraceRow number="03" label="Validate + repair" detail="Schema failed → repaired in one call" tone="amber" />
+                  <TraceRow number="01" label="Retrieve project brief" detail="1 tenant-scoped source · hybrid retrieval" tone="cyan" />
+                  <TraceRow number="02" label="Generate structured plan" detail="Mock fixture · plan-v1.0 · 1,200 in / 900 out" tone="indigo" />
+                  <TraceRow number="03" label="Validate + repair" detail="Schema failed → repaired in one retry" tone="amber" />
                   <TraceRow number="04" label="Human approval gate" detail="No task mutation before manager decision" tone="emerald" />
                 </div>
-                <div className="mt-5 grid grid-cols-3 gap-2"><MiniMetric label="COST" value="$0.015" /><MiniMetric label="LATENCY" value="2.35s" /><MiniMetric label="CITATIONS" value="S1–S4" /></div>
+                <div className="mt-5 grid grid-cols-3 gap-2"><MiniMetric label="COST" value="Not priced" /><MiniMetric label="LATENCY" value="2.35s fixture" /><MiniMetric label="CITATIONS" value="S1" /></div>
+                <p className="mt-3 text-[10px] leading-4 text-slate-500">Synthetic fixture telemetry demonstrates the evidence contract; no live-provider spend is claimed.</p>
               </div>
             </div>
           </div>

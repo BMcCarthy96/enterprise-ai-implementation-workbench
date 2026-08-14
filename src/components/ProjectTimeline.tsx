@@ -64,7 +64,7 @@ function PhaseRow({ phase, last }: { phase: TimelinePhase; last: boolean }) {
           >
             {phase.name}
           </p>
-          <span className="text-xs text-gray-400">{PHASE_LABEL[phase.status]}</span>
+          <span className="text-xs text-gray-500">{PHASE_LABEL[phase.status]}</span>
         </div>
         {phase.description && (
           <p className="mt-0.5 text-sm leading-relaxed text-gray-500">
@@ -81,7 +81,7 @@ function PhaseRow({ phase, last }: { phase: TimelinePhase; last: boolean }) {
                 style={{ width: `${pct}%` }}
               />
             </div>
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-500">
               {phase.doneCount} of {phase.taskCount} tasks
             </span>
           </div>
@@ -155,7 +155,7 @@ export function ProjectTimeline({ timeline }: { timeline: Timeline }) {
           <ul className="space-y-4">
             {updates.map((u) => (
               <li key={u.id} className="border-l-2 border-gray-200 pl-4">
-                <p className="text-xs text-gray-400">{fmtDate(u.publishedAt)}</p>
+                <p className="text-xs text-gray-500">{fmtDate(u.publishedAt)}</p>
                 <p className="text-sm font-medium text-gray-900">{u.title}</p>
                 <p className="mt-0.5 text-sm leading-relaxed text-gray-600">
                   {u.excerpt}

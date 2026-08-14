@@ -592,6 +592,7 @@ export const approvals = pgTable(
     reasonCode: text("reason_code"),
     note: text("note"),
     decisionKey: text("decision_key"),
+    decisionFingerprint: text("decision_fingerprint"),
     regenerationJobId: uuid("regeneration_job_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

@@ -13,7 +13,7 @@ export function NavLinks({
     <>
       {groups.map((group) => (
         <div key={group.label} className="mb-4 last:mb-0">
-          <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+          <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
             {group.label}
           </p>
           {group.items.map((item) => {

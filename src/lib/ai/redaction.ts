@@ -15,7 +15,21 @@ export function redactSensitiveText(input: string): RedactionResult {
     counts.email += 1;
     return "[REDACTED_EMAIL]";
   });
-  text = text.replace(/(?:\+?\d[\d\s().-]{7,}\d)/g, (candidate) => {
+  // Requirement UUIDs are integrity-bearing prompt data. Protect their spans
+  // explicitly because a UUID can begin with 8-12 digits or contain a long
+  // numeric tail that otherwise looks like a phone number.
+  const uuidRanges = Array.from(
+    text.matchAll(/\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/gi),
+    (match) => {
+      const start = match.index ?? 0;
+      return { start, end: start + match[0].length };
+    },
+  );
+  text = text.replace(/(?:\+?\d[\d\s().-]{7,}\d)/g, (candidate, offset: number) => {
+    const end = offset + candidate.length;
+    if (uuidRanges.some((range) => offset < range.end && end > range.start)) {
+      return candidate;
+    }
     const value = candidate.trim();
     const digits = value.replace(/\D/g, "");
     // Preserve ISO dates and require a plausible E.164-length phone number.

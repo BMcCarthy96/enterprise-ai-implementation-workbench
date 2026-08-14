@@ -87,7 +87,7 @@ export function SlaPolicyForm({
             {customCount} custom
           </span>
         ) : (
-          <span className="text-xs text-gray-400">Using org defaults</span>
+          <span className="text-xs text-gray-500">Using org defaults</span>
         )}
       </div>
       <p className="mb-4 text-xs text-gray-500">
@@ -120,7 +120,7 @@ export function SlaPolicyForm({
                         setDraft((d) => ({ ...d, [f.key]: e.target.value }))
                       }
                     />
-                    <span className="text-xs text-gray-400">{f.unit}</span>
+                    <span className="text-xs text-gray-500">{f.unit}</span>
                   </span>
                 </label>
               ))}

@@ -73,6 +73,14 @@ $env:DATABASE_ADMIN_URL="postgres://admin:..."
 npm run db:migrate
 ```
 
+After migrations, provision grants and forced RLS for the pre-created runtime role:
+
+```bash
+psql "$DATABASE_ADMIN_URL" -v runtime_role=workbench_runtime -f scripts/provision-runtime-role.sql
+```
+
+The admin role must retain `BYPASSRLS`; the runtime connection must use the named restricted role.
+
 Configure the Next.js runtime with:
 
 ```bash

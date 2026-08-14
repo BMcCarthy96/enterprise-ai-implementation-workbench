@@ -7,11 +7,9 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
-  // Keep the dev overlay out of the bottom-left corner, where it would sit on
-  // top of the sidebar's sign-out control (and intercept its clicks in e2e).
-  devIndicators: {
-    position: "bottom-right",
-  },
+  // Keep framework chrome out of recruiter screenshots and interactive controls.
+  // Compile/runtime errors still surface in the terminal and Next.js overlay.
+  devIndicators: false,
   // Emit a standalone server bundle for container/App Runner deployment.
   output: "standalone",
 };

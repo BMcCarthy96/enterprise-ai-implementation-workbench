@@ -17,9 +17,18 @@ function configuredPositiveNumber(name: string, fallback: number): number {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
-const DEMO_MAX_DAILY_SPEND_USD = configuredPositiveNumber("DEMO_MAX_DAILY_SPEND_USD", 1);
-const DEMO_MAX_MONTHLY_SPEND_USD = configuredPositiveNumber("DEMO_MAX_MONTHLY_SPEND_USD", 15);
-const DEMO_MAX_GENERATION_JOBS = Math.max(1, Math.floor(configuredPositiveNumber("DEMO_MAX_GENERATION_JOBS", 1)));
+const DEMO_MAX_DAILY_SPEND_USD = configuredPositiveNumber(
+  "DEMO_MAX_DAILY_SPEND_USD",
+  1,
+);
+const DEMO_MAX_MONTHLY_SPEND_USD = configuredPositiveNumber(
+  "DEMO_MAX_MONTHLY_SPEND_USD",
+  15,
+);
+const DEMO_MAX_GENERATION_JOBS = Math.max(
+  1,
+  Math.floor(configuredPositiveNumber("DEMO_MAX_GENERATION_JOBS", 1)),
+);
 export const DEMO_ESTIMATED_RESERVATION_USD = 0.05;
 
 export const DEMO_PERSONA_ROLES = [
@@ -37,7 +46,8 @@ function demoRefs(value: unknown): DemoScenarioRefs | null {
     !candidate.personaUserIds?.implementation_manager ||
     !candidate.personaUserIds?.solutions_engineer ||
     !candidate.personaUserIds?.customer_stakeholder
-  ) return null;
+  )
+    return null;
   return candidate as DemoScenarioRefs;
 }
 
@@ -65,35 +75,42 @@ function buildDemoPlan(input: {
     ],
     risks: [
       {
-        description: "Delayed source-system access could compress validation time.",
+        description:
+          "Delayed source-system access could compress validation time.",
         severity: "medium",
-        mitigation: "Track access as a kickoff exit criterion and escalate after two business days.",
+        mitigation:
+          "Track access as a kickoff exit criterion and escalate after two business days.",
         ...(sourceRefs ? { sourceRefs } : {}),
       },
       {
-        description: "Operational edge cases may appear late in user acceptance testing.",
+        description:
+          "Operational edge cases may appear late in user acceptance testing.",
         severity: "high",
-        mitigation: "Replay representative exception scenarios in the sandbox before UAT sign-off.",
+        mitigation:
+          "Replay representative exception scenarios in the sandbox before UAT sign-off.",
         ...(sourceRefs ? { sourceRefs } : {}),
       },
     ],
     milestones: [
       {
         name: "Discovery & Architecture",
-        description: "Confirm scope, success measures, integration boundaries, and delivery controls.",
+        description:
+          "Confirm scope, success measures, integration boundaries, and delivery controls.",
         durationWeeks: 1,
         ...(sourceRefs ? { sourceRefs } : {}),
         tasks: [
           {
             title: "Confirm acceptance criteria and owners",
-            description: "Validate every requirement with business and technical stakeholders.",
+            description:
+              "Validate every requirement with business and technical stakeholders.",
             suggestedRole: "implementation_manager",
             estimateHours: 6,
             ...(sourceRefs ? { sourceRefs } : {}),
           },
           {
             title: "Finalize solution architecture",
-            description: "Document system boundaries, security roles, data flow, and failure handling.",
+            description:
+              "Document system boundaries, security roles, data flow, and failure handling.",
             suggestedRole: "solutions_engineer",
             estimateHours: 10,
             ...(sourceRefs ? { sourceRefs } : {}),
@@ -102,20 +119,23 @@ function buildDemoPlan(input: {
       },
       {
         name: "Platform Foundation",
-        description: "Provision the sandbox, access controls, observability, and deployment path.",
+        description:
+          "Provision the sandbox, access controls, observability, and deployment path.",
         durationWeeks: 1.5,
         ...(sourceRefs ? { sourceRefs } : {}),
         tasks: [
           {
             title: "Provision sandbox and delivery pipeline",
-            description: "Create isolated environments with deployment checks and rollback guidance.",
+            description:
+              "Create isolated environments with deployment checks and rollback guidance.",
             suggestedRole: "solutions_engineer",
             estimateHours: 16,
             ...(sourceRefs ? { sourceRefs } : {}),
           },
           {
             title: "Configure roles, alerts, and audit controls",
-            description: "Apply least-privilege roles and operational telemetry before feature work.",
+            description:
+              "Apply least-privilege roles and operational telemetry before feature work.",
             suggestedRole: "solutions_engineer",
             estimateHours: 12,
             ...(sourceRefs ? { sourceRefs } : {}),
@@ -124,7 +144,8 @@ function buildDemoPlan(input: {
       },
       {
         name: "Requirement Build",
-        description: "Deliver the approved requirements iteratively, highest business risk first.",
+        description:
+          "Deliver the approved requirements iteratively, highest business risk first.",
         durationWeeks: 3,
         ...(sourceRefs ? { sourceRefs } : {}),
         tasks: input.requirements.map((requirement, index) => ({
@@ -138,20 +159,23 @@ function buildDemoPlan(input: {
       },
       {
         name: "Validation, Launch & Handoff",
-        description: "Prove the workflow, obtain approval, launch safely, and transfer ownership.",
+        description:
+          "Prove the workflow, obtain approval, launch safely, and transfer ownership.",
         durationWeeks: 2,
         ...(sourceRefs ? { sourceRefs } : {}),
         tasks: [
           {
             title: "Run UAT and exception-path validation",
-            description: "Test acceptance criteria and failure scenarios with customer participants.",
+            description:
+              "Test acceptance criteria and failure scenarios with customer participants.",
             suggestedRole: "implementation_manager",
             estimateHours: 16,
             ...(sourceRefs ? { sourceRefs } : {}),
           },
           {
             title: "Execute launch and operational handoff",
-            description: "Complete go-live checks, training, runbooks, and support ownership transfer.",
+            description:
+              "Complete go-live checks, training, runbooks, and support ownership transfer.",
             suggestedRole: "implementation_manager",
             estimateHours: 12,
             ...(sourceRefs ? { sourceRefs } : {}),
@@ -187,7 +211,10 @@ export async function createDemoWorkspace(ip: string): Promise<{
   const ipHash = hashDemoIp(ip);
   const now = new Date();
   const existing = await dbAdmin.query.demoWorkspaces.findFirst({
-    where: and(eq(schema.demoWorkspaces.ipHash, ipHash), gt(schema.demoWorkspaces.expiresAt, now)),
+    where: and(
+      eq(schema.demoWorkspaces.ipHash, ipHash),
+      gt(schema.demoWorkspaces.expiresAt, now),
+    ),
   });
   if (existing) return issueDemoSession(existing);
 
@@ -196,10 +223,17 @@ export async function createDemoWorkspace(ip: string): Promise<{
     gt(schema.demoWorkspaces.expiresAt, now),
   );
   if (active >= DEMO_MAX_ACTIVE) {
-    throw new ApiError(429, "Interactive demo capacity is full; try again shortly", "DEMO_LIMIT_REACHED");
+    throw new ApiError(
+      429,
+      "Interactive demo capacity is full; try again shortly",
+      "DEMO_LIMIT_REACHED",
+    );
   }
 
-  return provisionDemoWorkspace(ipHash, new Date(now.getTime() + DEMO_TTL_SECONDS * 1000));
+  return provisionDemoWorkspace(
+    ipHash,
+    new Date(now.getTime() + DEMO_TTL_SECONDS * 1000),
+  );
 }
 
 /** Provision a fresh isolated workspace without consulting the visitor cap. */
@@ -231,7 +265,11 @@ async function provisionDemoWorkspace(
     crypto.randomUUID(),
     crypto.randomUUID(),
   ];
-  const claimsRequirementIds = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+  const claimsRequirementIds = [
+    crypto.randomUUID(),
+    crypto.randomUUID(),
+    crypto.randomUUID(),
+  ];
   const onboardingRequirementIds = [
     crypto.randomUUID(),
     crypto.randomUUID(),
@@ -243,7 +281,12 @@ async function provisionDemoWorkspace(
 
 Brightlane wants a controlled order intake workflow for approved source systems. Each submission must validate origin, destination, weight class, and service level. Carrier assignment must happen before an exception is opened, and manual overrides require a logged reason. Unresolved orders should route to a review queue with standardized reason codes. Operations leadership needs a daily summary of volume, exceptions, and unassigned orders. The implementation manager must approve the launch plan before delivery tasks are created.`;
   const documentBuffer = Buffer.from(documentText, "utf8");
-  const s3Key = documentKey(orgId, projectId, "order-intake-brief.md", documentId);
+  const s3Key = documentKey(
+    orgId,
+    projectId,
+    "order-intake-brief.md",
+    documentId,
+  );
   const embeddingResult =
     process.env.EMBEDDING_PROVIDER === "bedrock"
       ? await (await embeddingProvider()).embed(documentText)
@@ -253,25 +296,29 @@ Brightlane wants a controlled order intake workflow for approved source systems.
     {
       id: requirementIds[0],
       title: "Structured order intake",
-      details: "Capture and validate origin, destination, weight class, and service level from approved sources.",
+      details:
+        "Capture and validate origin, destination, weight class, and service level from approved sources.",
       priority: "critical" as const,
     },
     {
       id: requirementIds[1],
       title: "Carrier assignment rules",
-      details: "Assign carriers by lane, weight, and contract priority with audited manual overrides.",
+      details:
+        "Assign carriers by lane, weight, and contract priority with audited manual overrides.",
       priority: "critical" as const,
     },
     {
       id: requirementIds[2],
       title: "Exception review queue",
-      details: "Route failed validations into a reviewable queue with standardized reason codes.",
+      details:
+        "Route failed validations into a reviewable queue with standardized reason codes.",
       priority: "high" as const,
     },
     {
       id: requirementIds[3],
       title: "Daily operations summary",
-      details: "Summarize intake volume, unresolved exceptions, and unassigned orders for operations leadership.",
+      details:
+        "Summarize intake volume, unresolved exceptions, and unassigned orders for operations leadership.",
       priority: "medium" as const,
     },
   ];
@@ -279,19 +326,22 @@ Brightlane wants a controlled order intake workflow for approved source systems.
     {
       id: claimsRequirementIds[0],
       title: "Automated payer status polling",
-      details: "Poll the clearinghouse and surface claim status changes without manual portal checks.",
+      details:
+        "Poll the clearinghouse and surface claim status changes without manual portal checks.",
       priority: "high" as const,
     },
     {
       id: claimsRequirementIds[1],
       title: "Denial-reason routing",
-      details: "Route denied claims to specialist queues based on the payer denial code.",
+      details:
+        "Route denied claims to specialist queues based on the payer denial code.",
       priority: "high" as const,
     },
     {
       id: claimsRequirementIds[2],
       title: "Claims aging dashboard",
-      details: "Highlight outstanding claims in 30, 60, and 90-day aging buckets.",
+      details:
+        "Highlight outstanding claims in 30, 60, and 90-day aging buckets.",
       priority: "medium" as const,
     },
   ];
@@ -299,25 +349,29 @@ Brightlane wants a controlled order intake workflow for approved source systems.
     {
       id: onboardingRequirementIds[0],
       title: "Digital intake packet with e-signature",
-      details: "Let new patients complete demographics, history, and consent forms before arrival.",
+      details:
+        "Let new patients complete demographics, history, and consent forms before arrival.",
       priority: "critical" as const,
     },
     {
       id: onboardingRequirementIds[1],
       title: "Insurance verification checklist",
-      details: "Track verification steps and flag expired or mismatched coverage before appointments.",
+      details:
+        "Track verification steps and flag expired or mismatched coverage before appointments.",
       priority: "high" as const,
     },
     {
       id: onboardingRequirementIds[2],
       title: "Appointment-prep reminder sequence",
-      details: "Send 48-hour and 24-hour reminders with required documents and arrival guidance.",
+      details:
+        "Send 48-hour and 24-hour reminders with required documents and arrival guidance.",
       priority: "medium" as const,
     },
     {
       id: onboardingRequirementIds[3],
       title: "Staff onboarding-status dashboard",
-      details: "Show each patient workflow stage and highlight records that are stuck or incomplete.",
+      details:
+        "Show each patient workflow stage and highlight records that are stuck or incomplete.",
       priority: "high" as const,
     },
   ];
@@ -342,16 +396,48 @@ Brightlane wants a controlled order intake workflow for approved source systems.
         slug: `demo-${suffix}`,
       });
       await tx.insert(schema.users).values([
-        { id: personaUserIds.org_admin, email: `demo-${suffix}-admin@demo.workbench.local`, name: "Demo Operations Admin", passwordHash },
-        { id: personaUserIds.implementation_manager, email: `demo-${suffix}-manager@demo.workbench.local`, name: "Demo Implementation Manager", passwordHash },
-        { id: personaUserIds.solutions_engineer, email: `demo-${suffix}-engineer@demo.workbench.local`, name: "Demo Solutions Engineer", passwordHash },
-        { id: personaUserIds.customer_stakeholder, email: `demo-${suffix}-customer@demo.workbench.local`, name: "Demo Customer Stakeholder", passwordHash },
+        {
+          id: personaUserIds.org_admin,
+          email: `demo-${suffix}-admin@demo.workbench.local`,
+          name: "Demo Operations Admin",
+          passwordHash,
+        },
+        {
+          id: personaUserIds.implementation_manager,
+          email: `demo-${suffix}-manager@demo.workbench.local`,
+          name: "Demo Implementation Manager",
+          passwordHash,
+        },
+        {
+          id: personaUserIds.solutions_engineer,
+          email: `demo-${suffix}-engineer@demo.workbench.local`,
+          name: "Demo Solutions Engineer",
+          passwordHash,
+        },
+        {
+          id: personaUserIds.customer_stakeholder,
+          email: `demo-${suffix}-customer@demo.workbench.local`,
+          name: "Demo Customer Stakeholder",
+          passwordHash,
+        },
       ]);
       await tx.insert(schema.memberships).values([
         { orgId, userId: personaUserIds.org_admin, role: "org_admin" },
-        { orgId, userId: personaUserIds.implementation_manager, role: "implementation_manager" },
-        { orgId, userId: personaUserIds.solutions_engineer, role: "solutions_engineer" },
-        { orgId, userId: personaUserIds.customer_stakeholder, role: "customer_stakeholder" },
+        {
+          orgId,
+          userId: personaUserIds.implementation_manager,
+          role: "implementation_manager",
+        },
+        {
+          orgId,
+          userId: personaUserIds.solutions_engineer,
+          role: "solutions_engineer",
+        },
+        {
+          orgId,
+          userId: personaUserIds.customer_stakeholder,
+          role: "customer_stakeholder",
+        },
       ]);
       await tx.insert(schema.demoWorkspaces).values({
         orgId,
@@ -482,7 +568,7 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           type: "plan_generation",
           status: "succeeded",
           attempts: 1,
-          requestedBy: userId,
+          requestedBy: personaUserIds.solutions_engineer,
           startedAt: demoDaysAgo(17),
           finishedAt: demoDaysAgo(17, 0.01),
           durationMs: 2350,
@@ -575,7 +661,7 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           generatedByJobId: generationJob.id,
           incorporatedFeedback:
             "wrong sequencing — carrier assignment must precede exception routing",
-          createdBy: userId,
+          createdBy: personaUserIds.solutions_engineer,
           createdAt: demoDaysAgo(16),
         })
         .returning();
@@ -586,6 +672,16 @@ Brightlane wants a controlled order intake workflow for approved source systems.
         sourceRef: "S1",
         chunkId: documentChunk.id,
         location: "order-intake-brief.md · Order intake implementation brief",
+        retrieverVersion: "hybrid-v1",
+        queryHash: createHash("sha256")
+          .update(`Order Intake Automation|${documentText}`)
+          .digest("hex"),
+        rank: 1,
+        vectorScore: "0.93000000",
+        lexicalScore: "0.87000000",
+        selectionReason:
+          "Top hybrid match for the order-intake workflow and exception-handling requirements.",
+        redactedExcerpt: documentText.slice(0, 320),
         createdAt: demoDaysAgo(16),
       });
       const demoEvaluations = buildPlanEvaluationRows(
@@ -596,35 +692,48 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           customerIndustry: "Logistics & Freight",
           targetDate: null,
           requirements: orderRequirements,
-          sources: [{ ref: "S1", documentName: "order-intake-brief.md", pageNumber: null, heading: "Order intake implementation brief", content: documentText }],
+          sources: [
+            {
+              ref: "S1",
+              documentName: "order-intake-brief.md",
+              pageNumber: null,
+              heading: "Order intake implementation brief",
+              content: documentText,
+            },
+          ],
         },
         orderPlanContent,
       );
-      await tx.insert(schema.aiRunEvaluations).values(demoEvaluations.map((evaluation) => ({
-        orgId,
-        aiRunId: aiRun.id,
-        checkName: evaluation.checkName,
-        category: evaluation.category,
-        gateLevel: evaluation.gateLevel,
-        score: evaluation.score.toFixed(6),
-        threshold: evaluation.threshold.toFixed(6),
-        passed: evaluation.passed,
-        detail: evaluation.detail,
-        evaluatorVersion: evaluation.evaluatorVersion,
-        createdAt: demoDaysAgo(16),
-      })));
-      const [approvedPlanApproval] = await tx.insert(schema.approvals).values({
-        orgId,
-        projectId,
-        subjectType: "plan",
-        subjectId: approvedPlan.id,
-        status: "approved",
-        requestedBy: userId,
-        decidedBy: userId,
-        decidedAt: demoDaysAgo(15),
-        note: "Revised sequencing is grounded in the implementation brief. Approved for delivery.",
-        createdAt: demoDaysAgo(16),
-      }).returning({ id: schema.approvals.id });
+      await tx.insert(schema.aiRunEvaluations).values(
+        demoEvaluations.map((evaluation) => ({
+          orgId,
+          aiRunId: aiRun.id,
+          checkName: evaluation.checkName,
+          category: evaluation.category,
+          gateLevel: evaluation.gateLevel,
+          score: evaluation.score.toFixed(6),
+          threshold: evaluation.threshold.toFixed(6),
+          passed: evaluation.passed,
+          detail: evaluation.detail,
+          evaluatorVersion: evaluation.evaluatorVersion,
+          createdAt: demoDaysAgo(16),
+        })),
+      );
+      const [approvedPlanApproval] = await tx
+        .insert(schema.approvals)
+        .values({
+          orgId,
+          projectId,
+          subjectType: "plan",
+          subjectId: approvedPlan.id,
+          status: "approved",
+          requestedBy: personaUserIds.solutions_engineer,
+          decidedBy: userId,
+          decidedAt: demoDaysAgo(15),
+          note: "Revised sequencing is grounded in the implementation brief. Approved for delivery.",
+          createdAt: demoDaysAgo(16),
+        })
+        .returning({ id: schema.approvals.id });
 
       const taskStatuses = [
         ["done", "done"],
@@ -632,8 +741,16 @@ Brightlane wants a controlled order intake workflow for approved source systems.
         ["done", "in_progress", "blocked", "todo"],
         ["todo", "todo"],
       ] as const;
-      const milestoneStatuses = ["complete", "in_progress", "in_progress", "not_started"] as const;
-      for (const [milestoneIndex, milestoneContent] of orderPlanContent.milestones.entries()) {
+      const milestoneStatuses = [
+        "complete",
+        "in_progress",
+        "in_progress",
+        "not_started",
+      ] as const;
+      for (const [
+        milestoneIndex,
+        milestoneContent,
+      ] of orderPlanContent.milestones.entries()) {
         const [milestone] = await tx
           .insert(schema.milestones)
           .values({
@@ -647,7 +764,10 @@ Brightlane wants a controlled order intake workflow for approved source systems.
             createdAt: demoDaysAgo(15),
           })
           .returning();
-        for (const [taskIndex, taskContent] of milestoneContent.tasks.entries()) {
+        for (const [
+          taskIndex,
+          taskContent,
+        ] of milestoneContent.tasks.entries()) {
           const status = taskStatuses[milestoneIndex]?.[taskIndex] ?? "todo";
           await tx.insert(schema.tasks).values({
             orgId,
@@ -657,10 +777,13 @@ Brightlane wants a controlled order intake workflow for approved source systems.
             description: taskContent.description,
             status,
             priority: status === "blocked" ? "critical" : "high",
-            assigneeId: status === "todo" ? null : userId,
+            assigneeId:
+              status === "todo" ? null : personaUserIds.solutions_engineer,
             sortOrder: taskIndex,
             createdAt: demoDaysAgo(15),
-            updatedAt: demoDaysAgo(status === "done" ? 9 : status === "blocked" ? 8 : 2),
+            updatedAt: demoDaysAgo(
+              status === "done" ? 9 : status === "blocked" ? 8 : 2,
+            ),
           });
         }
       }
@@ -673,7 +796,7 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           type: "customer_update_digest",
           status: "succeeded",
           attempts: 1,
-          requestedBy: userId,
+          requestedBy: personaUserIds.solutions_engineer,
           startedAt: demoDaysAgo(4),
           finishedAt: demoDaysAgo(4, 0.01),
           durationMs: 1830,
@@ -694,7 +817,7 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           status: "published",
           generatedByJobId: digestJob.id,
           publishedAt: demoDaysAgo(3),
-          createdBy: userId,
+          createdBy: personaUserIds.solutions_engineer,
           createdAt: demoDaysAgo(4),
         })
         .returning();
@@ -704,7 +827,7 @@ Brightlane wants a controlled order intake workflow for approved source systems.
         subjectType: "customer_update",
         subjectId: publishedUpdate.id,
         status: "approved",
-        requestedBy: userId,
+        requestedBy: personaUserIds.solutions_engineer,
         decidedBy: userId,
         decidedAt: demoDaysAgo(3),
         note: "Accurate, concise, and appropriate for the customer audience.",
@@ -716,22 +839,24 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           orgId,
           projectId,
           title: "Order Intake Automation — UAT Readiness",
-          body:
-            "Carrier assignment rules are feature-complete in the sandbox. The team is ready to begin UAT after Brightlane confirms the exception reason-code list and identifies final sign-off participants.",
+          body: "Carrier assignment rules are feature-complete in the sandbox. The team is ready to begin UAT after Brightlane confirms the exception reason-code list and identifies final sign-off participants.",
           status: "pending_approval",
-          createdBy: userId,
+          createdBy: personaUserIds.solutions_engineer,
           createdAt: demoDaysAgo(0, -5),
         })
         .returning();
-      const [pendingUpdateApproval] = await tx.insert(schema.approvals).values({
-        orgId,
-        projectId,
-        subjectType: "customer_update",
-        subjectId: pendingUpdate.id,
-        status: "pending",
-        requestedBy: userId,
-        createdAt: demoDaysAgo(0, -5),
-      }).returning({ id: schema.approvals.id });
+      const [pendingUpdateApproval] = await tx
+        .insert(schema.approvals)
+        .values({
+          orgId,
+          projectId,
+          subjectType: "customer_update",
+          subjectId: pendingUpdate.id,
+          status: "pending",
+          requestedBy: personaUserIds.solutions_engineer,
+          createdAt: demoDaysAgo(0, -5),
+        })
+        .returning({ id: schema.approvals.id });
 
       const [claimsGenerationJob] = await tx
         .insert(schema.jobs)
@@ -741,7 +866,7 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           type: "plan_generation",
           status: "succeeded",
           attempts: 1,
-          requestedBy: userId,
+          requestedBy: personaUserIds.solutions_engineer,
           startedAt: demoDaysAgo(2),
           finishedAt: demoDaysAgo(2, 0.01),
           durationMs: 2100,
@@ -760,21 +885,24 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           model: "mock",
           promptVersion: PROMPT_VERSION,
           generatedByJobId: claimsGenerationJob.id,
-          createdBy: userId,
+          createdBy: personaUserIds.solutions_engineer,
           createdAt: demoDaysAgo(2),
         })
         .returning();
-      const [pendingPlanApproval] = await tx.insert(schema.approvals).values({
-        orgId,
-        projectId: claimsProjectId,
-        subjectType: "plan",
-        subjectId: claimsPlan.id,
-        status: "pending",
-        // The engineer produced this AI plan; the manager must be the
-        // independent reviewer in the seeded maker-checker walkthrough.
-        requestedBy: personaUserIds.solutions_engineer,
-        createdAt: demoDaysAgo(2),
-      }).returning({ id: schema.approvals.id });
+      const [pendingPlanApproval] = await tx
+        .insert(schema.approvals)
+        .values({
+          orgId,
+          projectId: claimsProjectId,
+          subjectType: "plan",
+          subjectId: claimsPlan.id,
+          status: "pending",
+          // The engineer produced this AI plan; the manager must be the
+          // independent reviewer in the seeded maker-checker walkthrough.
+          requestedBy: personaUserIds.solutions_engineer,
+          createdAt: demoDaysAgo(2),
+        })
+        .returning({ id: schema.approvals.id });
       const [deadLetterJob] = await tx
         .insert(schema.jobs)
         .values({
@@ -821,7 +949,11 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           subjectType: "plan",
           subjectId: approvedPlan.id,
           projectId,
-          metadata: { model: "mock", promptVersion: PROMPT_VERSION, outcome: "repaired" },
+          metadata: {
+            model: "mock",
+            promptVersion: PROMPT_VERSION,
+            outcome: "repaired",
+          },
           createdAt: demoDaysAgo(17),
         },
         {
@@ -840,7 +972,11 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           action: "task.status_changed",
           subjectType: "task",
           projectId,
-          metadata: { from: "in_progress", to: "blocked", reason: "customer decision" },
+          metadata: {
+            from: "in_progress",
+            to: "blocked",
+            reason: "customer decision",
+          },
           createdAt: demoDaysAgo(8),
         },
         {
@@ -890,7 +1026,10 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           subjectType: "project",
           subjectId: onboardingProjectId,
           projectId: onboardingProjectId,
-          metadata: { name: "Patient Onboarding Portal", demoAction: "generate_plan" },
+          metadata: {
+            name: "Patient Onboarding Portal",
+            demoAction: "generate_plan",
+          },
           createdAt: demoDaysAgo(1),
         },
       ]);
@@ -932,7 +1071,9 @@ Brightlane wants a controlled order intake workflow for approved source systems.
   }
 }
 
-async function issueDemoSession(workspace: typeof schema.demoWorkspaces.$inferSelect) {
+async function issueDemoSession(
+  workspace: typeof schema.demoWorkspaces.$inferSelect,
+) {
   return issueDemoSessionForRole(workspace, "implementation_manager");
 }
 
@@ -940,19 +1081,38 @@ export async function issueDemoSessionForRole(
   workspace: typeof schema.demoWorkspaces.$inferSelect,
   role: Role,
 ) {
-  const org = await dbAdmin.query.organizations.findFirst({ where: eq(schema.organizations.id, workspace.orgId) });
+  const org = await dbAdmin.query.organizations.findFirst({
+    where: eq(schema.organizations.id, workspace.orgId),
+  });
   const refs = demoRefs(workspace.scenarioRefs);
-  const userId = refs?.personaUserIds[role] ?? (role === "implementation_manager" ? workspace.userId : null);
+  const userId =
+    refs?.personaUserIds[role] ??
+    (role === "implementation_manager" ? workspace.userId : null);
   const user = userId
-    ? await dbAdmin.query.users.findFirst({ where: eq(schema.users.id, userId) })
-    : null;
-  if (!org || !user) throw new ApiError(503, "Demo workspace is unavailable", "DEMO_UNAVAILABLE");
-  const membership = user
-    ? await dbAdmin.query.memberships.findFirst({
-        where: and(eq(schema.memberships.userId, user.id), eq(schema.memberships.orgId, org.id)),
+    ? await dbAdmin.query.users.findFirst({
+        where: eq(schema.users.id, userId),
       })
     : null;
-  if (!org || !user || !membership) throw new ApiError(503, "Demo workspace is unavailable", "DEMO_UNAVAILABLE");
+  if (!org || !user)
+    throw new ApiError(
+      503,
+      "Demo workspace is unavailable",
+      "DEMO_UNAVAILABLE",
+    );
+  const membership = user
+    ? await dbAdmin.query.memberships.findFirst({
+        where: and(
+          eq(schema.memberships.userId, user.id),
+          eq(schema.memberships.orgId, org.id),
+        ),
+      })
+    : null;
+  if (!org || !user || !membership)
+    throw new ApiError(
+      503,
+      "Demo workspace is unavailable",
+      "DEMO_UNAVAILABLE",
+    );
   const ttlSeconds = remainingDemoTtlSeconds(workspace.expiresAt);
   const payload: SessionPayload = {
     userId: user.id,
@@ -966,7 +1126,12 @@ export async function issueDemoSessionForRole(
     demoWorkspaceId: workspace.id,
     demoExpiresAt: workspace.expiresAt.toISOString(),
   };
-  return { workspace, token: await createSessionToken(payload, ttlSeconds), user, ttlSeconds };
+  return {
+    workspace,
+    token: await createSessionToken(payload, ttlSeconds),
+    user,
+    ttlSeconds,
+  };
 }
 
 export async function switchDemoPersona(input: {
@@ -980,23 +1145,56 @@ export async function switchDemoPersona(input: {
     throw new ApiError(400, "Unknown demo persona", "DEMO_ROLE_INVALID");
   }
   const workspace = await dbAdmin.query.demoWorkspaces.findFirst({
-    where: and(eq(schema.demoWorkspaces.id, input.workspaceId), eq(schema.demoWorkspaces.orgId, input.orgId)),
+    where: and(
+      eq(schema.demoWorkspaces.id, input.workspaceId),
+      eq(schema.demoWorkspaces.orgId, input.orgId),
+    ),
   });
-  if (!workspace) throw new ApiError(404, "Demo workspace not found", "DEMO_NOT_FOUND");
-  if (workspace.expiresAt <= new Date()) throw new ApiError(410, "Demo workspace has expired", "DEMO_EXPIRED");
+  if (!workspace)
+    throw new ApiError(404, "Demo workspace not found", "DEMO_NOT_FOUND");
+  if (workspace.expiresAt <= new Date())
+    throw new ApiError(410, "Demo workspace has expired", "DEMO_EXPIRED");
   const refs = demoRefs(workspace.scenarioRefs);
-  if (!refs) throw new ApiError(409, "This demo predates persona switching; reset the demo to upgrade it", "DEMO_PERSONAS_UNAVAILABLE");
-  const currentIsPersona = Object.values(refs.personaUserIds).includes(input.currentUserId);
-  if (!currentIsPersona) throw new ApiError(403, "Only an active demo persona can switch roles", "DEMO_PERSONA_REQUIRED");
+  if (!refs)
+    throw new ApiError(
+      409,
+      "This demo predates persona switching; reset the demo to upgrade it",
+      "DEMO_PERSONAS_UNAVAILABLE",
+    );
+  const currentIsPersona = Object.values(refs.personaUserIds).includes(
+    input.currentUserId,
+  );
+  if (!currentIsPersona)
+    throw new ApiError(
+      403,
+      "Only an active demo persona can switch roles",
+      "DEMO_PERSONA_REQUIRED",
+    );
   const targetUserId = refs.personaUserIds[input.role];
   const target = await dbAdmin
-    .select({ id: schema.users.id, email: schema.users.email, name: schema.users.name, role: schema.memberships.role })
+    .select({
+      id: schema.users.id,
+      email: schema.users.email,
+      name: schema.users.name,
+      role: schema.memberships.role,
+    })
     .from(schema.users)
-    .innerJoin(schema.memberships, and(eq(schema.memberships.userId, schema.users.id), eq(schema.memberships.orgId, input.orgId)))
+    .innerJoin(
+      schema.memberships,
+      and(
+        eq(schema.memberships.userId, schema.users.id),
+        eq(schema.memberships.orgId, input.orgId),
+      ),
+    )
     .where(eq(schema.users.id, targetUserId))
     .limit(1);
   const targetUser = target[0];
-  if (!targetUser || targetUser.role !== input.role) throw new ApiError(409, "Requested demo persona is unavailable", "DEMO_PERSONA_UNAVAILABLE");
+  if (!targetUser || targetUser.role !== input.role)
+    throw new ApiError(
+      409,
+      "Requested demo persona is unavailable",
+      "DEMO_PERSONA_UNAVAILABLE",
+    );
   const result = await issueDemoSessionForRole(workspace, input.role);
   return {
     ...result,
@@ -1026,16 +1224,25 @@ export async function replaceDemoWorkspace(input: {
       eq(schema.demoWorkspaces.orgId, input.orgId),
     ),
   });
-  if (!current) throw new ApiError(404, "Demo workspace not found", "DEMO_NOT_FOUND");
+  if (!current)
+    throw new ApiError(404, "Demo workspace not found", "DEMO_NOT_FOUND");
   if (current.expiresAt <= now) {
     throw new ApiError(410, "Demo workspace has expired", "DEMO_EXPIRED");
   }
   const refs = demoRefs(current.scenarioRefs);
   if (refs && !Object.values(refs.personaUserIds).includes(input.userId)) {
-    throw new ApiError(403, "Only an active demo persona can reset the workspace", "DEMO_PERSONA_REQUIRED");
+    throw new ApiError(
+      403,
+      "Only an active demo persona can reset the workspace",
+      "DEMO_PERSONA_REQUIRED",
+    );
   }
   if (!refs && current.userId !== input.userId) {
-    throw new ApiError(403, "Only the demo owner can reset this legacy workspace", "DEMO_PERSONA_REQUIRED");
+    throw new ApiError(
+      403,
+      "Only the demo owner can reset this legacy workspace",
+      "DEMO_PERSONA_REQUIRED",
+    );
   }
 
   const active = await dbAdmin.$count(
@@ -1046,7 +1253,11 @@ export async function replaceDemoWorkspace(input: {
     ),
   );
   if (active >= DEMO_MAX_ACTIVE) {
-    throw new ApiError(429, "Interactive demo capacity is full; try again shortly", "DEMO_LIMIT_REACHED");
+    throw new ApiError(
+      429,
+      "Interactive demo capacity is full; try again shortly",
+      "DEMO_LIMIT_REACHED",
+    );
   }
 
   const replacement = await provisionDemoWorkspace(
@@ -1075,11 +1286,16 @@ export async function replaceDemoWorkspace(input: {
   return replacement;
 }
 
-export async function reserveDemoGeneration(input: { orgId: string; userId: string }): Promise<number> {
+export async function reserveDemoGeneration(input: {
+  orgId: string;
+  userId: string;
+}): Promise<number> {
   const now = new Date();
   const dayStart = new Date(now);
   dayStart.setUTCHours(0, 0, 0, 0);
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const monthStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+  );
   await dbAdmin.transaction(async (tx) => {
     // One transaction-wide advisory lock serializes the global demo circuit
     // breaker across different workspaces, not just concurrent calls from the
@@ -1089,16 +1305,26 @@ export async function reserveDemoGeneration(input: { orgId: string; userId: stri
       sql`select id from ${schema.demoWorkspaces} where ${schema.demoWorkspaces.orgId} = ${input.orgId} for update`,
     );
     const membership = await tx.query.memberships.findFirst({
-      where: and(eq(schema.memberships.orgId, input.orgId), eq(schema.memberships.userId, input.userId)),
+      where: and(
+        eq(schema.memberships.orgId, input.orgId),
+        eq(schema.memberships.userId, input.userId),
+      ),
       columns: { userId: true },
     });
     const workspace = membership
       ? await tx.query.demoWorkspaces.findFirst({
-          where: and(eq(schema.demoWorkspaces.orgId, input.orgId), gt(schema.demoWorkspaces.expiresAt, new Date())),
+          where: and(
+            eq(schema.demoWorkspaces.orgId, input.orgId),
+            gt(schema.demoWorkspaces.expiresAt, new Date()),
+          ),
         })
       : null;
     if (!workspace) {
-      throw new ApiError(429, "Demo generation quota reached", "DEMO_LIMIT_REACHED");
+      throw new ApiError(
+        429,
+        "Demo generation quota reached",
+        "DEMO_LIMIT_REACHED",
+      );
     }
     const [spend] = await tx
       .select({
@@ -1117,10 +1343,16 @@ export async function reserveDemoGeneration(input: { orgId: string; userId: stri
       .from(schema.demoWorkspaces);
     const reserved = Number(reservationLedger?.reserved ?? 0);
     if (
-      Number(spend?.day ?? 0) + reserved + DEMO_ESTIMATED_RESERVATION_USD > DEMO_MAX_DAILY_SPEND_USD ||
-      Number(spend?.month ?? 0) + reserved + DEMO_ESTIMATED_RESERVATION_USD > DEMO_MAX_MONTHLY_SPEND_USD
+      Number(spend?.day ?? 0) + reserved + DEMO_ESTIMATED_RESERVATION_USD >
+        DEMO_MAX_DAILY_SPEND_USD ||
+      Number(spend?.month ?? 0) + reserved + DEMO_ESTIMATED_RESERVATION_USD >
+        DEMO_MAX_MONTHLY_SPEND_USD
     ) {
-      throw new ApiError(503, "Demo AI budget is exhausted; no model call was started", "DEMO_BUDGET_EXHAUSTED");
+      throw new ApiError(
+        503,
+        "Demo AI budget is exhausted; no model call was started",
+        "DEMO_BUDGET_EXHAUSTED",
+      );
     }
     const [row] = await tx
       .update(schema.demoWorkspaces)
@@ -1132,11 +1364,19 @@ export async function reserveDemoGeneration(input: { orgId: string; userId: stri
         and(
           eq(schema.demoWorkspaces.orgId, input.orgId),
           gt(schema.demoWorkspaces.expiresAt, new Date()),
-          lt(schema.demoWorkspaces.generationJobsUsed, schema.demoWorkspaces.maxGenerationJobs),
+          lt(
+            schema.demoWorkspaces.generationJobsUsed,
+            schema.demoWorkspaces.maxGenerationJobs,
+          ),
         ),
       )
       .returning({ id: schema.demoWorkspaces.id });
-    if (!row) throw new ApiError(429, "Demo generation quota reached", "DEMO_LIMIT_REACHED");
+    if (!row)
+      throw new ApiError(
+        429,
+        "Demo generation quota reached",
+        "DEMO_LIMIT_REACHED",
+      );
   });
   return DEMO_ESTIMATED_RESERVATION_USD;
 }
@@ -1165,10 +1405,18 @@ export async function reserveDemoUpload(input: {
   sizeBytes: number;
 }): Promise<void> {
   const membership = await db.query.memberships.findFirst({
-    where: and(eq(schema.memberships.orgId, input.orgId), eq(schema.memberships.userId, input.userId)),
+    where: and(
+      eq(schema.memberships.orgId, input.orgId),
+      eq(schema.memberships.userId, input.userId),
+    ),
     columns: { userId: true },
   });
-  if (!membership) throw new ApiError(403, "Only an active demo persona can upload documents", "DEMO_PERSONA_REQUIRED");
+  if (!membership)
+    throw new ApiError(
+      403,
+      "Only an active demo persona can upload documents",
+      "DEMO_PERSONA_REQUIRED",
+    );
   const [row] = await db
     .update(schema.demoWorkspaces)
     .set({
@@ -1184,7 +1432,12 @@ export async function reserveDemoUpload(input: {
       ),
     )
     .returning({ id: schema.demoWorkspaces.id });
-  if (!row) throw new ApiError(429, "Demo document quota reached", "DEMO_LIMIT_REACHED");
+  if (!row)
+    throw new ApiError(
+      429,
+      "Demo document quota reached",
+      "DEMO_LIMIT_REACHED",
+    );
 }
 
 export async function cleanupExpiredDemoWorkspaces(): Promise<number> {
@@ -1197,7 +1450,9 @@ export async function cleanupExpiredDemoWorkspaces(): Promise<number> {
     // the cascading org delete so expired interview/demo data is recoverable
     // only until this cleanup pass runs, never indefinitely in S3.
     await deletePrefix(`orgs/${workspace.orgId}/`);
-    await dbAdmin.delete(schema.organizations).where(eq(schema.organizations.id, workspace.orgId));
+    await dbAdmin
+      .delete(schema.organizations)
+      .where(eq(schema.organizations.id, workspace.orgId));
   }
   return expired.length;
 }

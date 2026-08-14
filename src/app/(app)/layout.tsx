@@ -4,7 +4,7 @@ import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can, ROLE_LABELS, type Permission } from "@/lib/auth/rbac";
 import { LogoutButton } from "@/components/LogoutButton";
-import { SearchPalette } from "@/components/SearchPalette";
+import { SearchPalette, SearchPaletteTrigger } from "@/components/SearchPalette";
 import { NavLinks } from "./NavLinks";
 import { AppShell } from "./AppShell";
 import { MobileNav } from "./MobileNav";
@@ -97,6 +97,7 @@ export default async function AppLayout({
         storageBytes: { used: demoWorkspace.uploadBytes, limit: demoWorkspace.maxStorageBytes },
       } : null}
     >
+    <SearchPalette />
     <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[90] focus:rounded-lg focus:bg-white focus:px-4 focus:py-3 focus:text-sm focus:font-semibold focus:text-slate-950 focus:shadow-lg">Skip to main content</a>
     <div className="min-h-screen">
       <MobileNav groups={groups} orgName={session.orgName} userName={session.name} />
@@ -111,11 +112,11 @@ export default async function AppLayout({
               Enterprise AI
             </p>
             <p className="truncate text-[11px] text-slate-400">Implementation Workbench</p>
-            <p className="truncate text-[11px] text-slate-500">{session.orgName}</p>
+            <p className="truncate text-[11px] text-slate-400">{session.orgName}</p>
           </div>
         </div>
         <div className="px-2 pt-3">
-          <SearchPalette />
+          <SearchPaletteTrigger />
         </div>
         <nav aria-label="Main" className="flex-1 space-y-0.5 px-2 py-3">
           <NavLinks groups={groups} />
@@ -124,7 +125,7 @@ export default async function AppLayout({
           <p className="truncate text-sm font-medium text-white">
             {session.name}
           </p>
-          <p className="mb-1 truncate text-xs text-gray-500">
+          <p className="mb-1 truncate text-xs text-slate-300">
             {ROLE_LABELS[session.role]}
           </p>
           <LogoutButton />

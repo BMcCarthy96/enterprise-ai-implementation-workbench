@@ -114,7 +114,7 @@ export default async function AuditPage({
                   <td className="table-td text-xs">{projectName ?? "—"}</td>
                   <td className="table-td max-w-xs">
                     {event.metadata != null && (
-                      <span className="block truncate font-mono text-xs text-gray-400">
+                      <span className="block truncate font-mono text-xs text-gray-500">
                         {JSON.stringify(event.metadata)}
                       </span>
                     )}

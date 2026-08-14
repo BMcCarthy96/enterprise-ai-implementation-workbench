@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backoffSeconds } from "@/server/services/jobs";
+import { backoffSeconds, canManuallyRetryJob } from "@/server/services/jobs";
 
 describe("backoffSeconds", () => {
   it("doubles the delay on each attempt", () => {
@@ -12,5 +12,15 @@ describe("backoffSeconds", () => {
   it("caps at the SQS maximum delay of 900 seconds", () => {
     expect(backoffSeconds(10)).toBe(900);
     expect(backoffSeconds(100)).toBe(900);
+  });
+});
+
+describe("canManuallyRetryJob", () => {
+  it("allows only durable failure states", () => {
+    expect(canManuallyRetryJob("failed")).toBe(true);
+    expect(canManuallyRetryJob("dead_letter")).toBe(true);
+    expect(canManuallyRetryJob("queued")).toBe(false);
+    expect(canManuallyRetryJob("running")).toBe(false);
+    expect(canManuallyRetryJob("succeeded")).toBe(false);
   });
 });

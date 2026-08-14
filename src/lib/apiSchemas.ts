@@ -90,6 +90,15 @@ export const UpdateSlaPolicySchema = z.strictObject(
   ) as Record<keyof SlaPolicy, z.ZodOptional<z.ZodNumber>>,
 );
 
+export const RetentionPolicySchema = z.strictObject({
+  auditDays: z.number().int().min(90).max(2555),
+  aiDetailDays: z.number().int().min(30).max(365),
+  completedJobDays: z.number().int().min(7).max(90),
+  webhookDeliveryDays: z.number().int().min(7).max(90),
+});
+
+export const UpdateRetentionPolicySchema = RetentionPolicySchema.partial();
+
 export const CreateTaskSchema = z.object({
   title: z.string().min(3).max(300),
   description: z.string().max(4000).optional(),

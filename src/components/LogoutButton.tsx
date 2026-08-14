@@ -1,19 +1,28 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
-export function LogoutButton() {
+export function LogoutButton({ className }: { className?: string }) {
   const router = useRouter();
+  const [busy, setBusy] = useState(false);
   return (
     <button
-      className="text-xs text-slate-400 hover:text-white"
+      type="button"
+      className={className ?? "text-xs text-slate-400 hover:text-white"}
+      disabled={busy}
       onClick={async () => {
-        await fetch("/api/auth/logout", { method: "POST" });
-        router.push("/login");
-        router.refresh();
+        setBusy(true);
+        try {
+          await fetch("/api/auth/logout", { method: "POST" });
+          router.push("/login");
+          router.refresh();
+        } finally {
+          setBusy(false);
+        }
       }}
     >
-      Sign out
+      {busy ? "Signing out…" : "Sign out"}
     </button>
   );
 }

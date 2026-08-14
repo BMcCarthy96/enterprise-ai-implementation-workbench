@@ -82,7 +82,7 @@ export function JobRunnerButton({
         {busy ? busyLabel : phase === "done" ? "Done ✓" : label}
       </button>
       {busy && (
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-gray-500">
           {phase === "queued" ? "Waiting for worker..." : "Processing..."}
         </span>
       )}

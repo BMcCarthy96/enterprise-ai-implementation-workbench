@@ -44,7 +44,7 @@ export default async function ActivityPage({
       <ul className="divide-y divide-gray-100">
         {events.map(({ event, actorName }) => (
           <li key={event.id} className="flex items-baseline gap-3 px-4 py-2.5">
-            <span className="w-32 shrink-0 text-xs text-gray-400">
+            <span className="w-32 shrink-0 text-xs text-gray-500">
               {event.createdAt.toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
@@ -60,7 +60,7 @@ export default async function ActivityPage({
                 — {event.action.replace(/\./g, ": ").replace(/_/g, " ")}
               </p>
               {event.metadata != null && (
-                <p className="mt-0.5 max-w-xl truncate font-mono text-xs text-gray-400">
+                <p className="mt-0.5 max-w-xl truncate font-mono text-xs text-gray-500">
                   {JSON.stringify(event.metadata)}
                 </p>
               )}

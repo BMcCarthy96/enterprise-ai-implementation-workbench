@@ -11,7 +11,7 @@ export function MetricBars({
 }) {
   const max = Math.max(1, ...rows.map((r) => r.count));
   if (rows.length === 0) {
-    return <p className="text-sm text-gray-400">{emptyLabel}</p>;
+    return <p className="text-sm text-gray-500">{emptyLabel}</p>;
   }
   return (
     <ul className="space-y-2">

@@ -8,10 +8,11 @@ production launch plan.
 
 Use this mode for a portfolio URL or a scheduled interview. The web runtime,
 Postgres/pgvector database, object storage, queue, worker, and observability
-stack stay provisioned. Seed the synthetic Northwind and Brightlane tenants,
-set `AI_PROVIDER=mock`, and keep the demo guardrails enabled:
+stack stay provisioned. Set `WORKBENCH_ENV_MODE=showcase` and
+`AI_PROVIDER=mock`, then keep the demo guardrails enabled:
 
 - synthetic accounts only; never add personal or customer data;
+- public password login disabled; reviewers enter through expiring isolated demo sessions or configured enterprise SSO;
 - one live generation per isolated demo workspace;
 - a short workspace TTL and the daily/monthly spend caps from `.env.example`;
 - `/api/health` as the liveness/readiness check;
@@ -30,7 +31,7 @@ and destroy it after the session. Keep the mode visible in the environment
 metadata so screenshots and proof claims cannot imply durable production data.
 
 ```text
-WORKBENCH_ENV_MODE=ephemeral
+WORKBENCH_ENV_MODE=interview
 WORKBENCH_TTL_HOURS=8
 AI_PROVIDER=mock
 ```

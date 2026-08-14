@@ -1,14 +1,16 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { and, eq } from "drizzle-orm";
+import { db, schema, withTenantTransaction } from "@/db";
 import { env } from "@/lib/env";
 import { withSpan } from "@/lib/telemetry";
 import type { Role } from "./rbac";
 
 /**
- * Stateless session: an HS256 JWT in an httpOnly cookie. The token carries
- * identity plus the active organization and the user's role in it, so RBAC
- * checks never need an extra query. Swappable for Cognito-issued tokens in a
- * real AWS deployment without touching call sites.
+ * An HS256 JWT in an httpOnly cookie carries the active organization and role.
+ * Protected requests also compare its membership version with PostgreSQL so
+ * SCIM suspension and role changes invalidate an existing token immediately.
+ * The JWT boundary remains swappable for Cognito-issued tokens.
  */
 
 export const SESSION_COOKIE = "workbench_session";
@@ -46,21 +48,79 @@ export async function createSessionToken(
 export async function verifySessionToken(
   token: string,
 ): Promise<SessionPayload | null> {
-  return withSpan("auth.verify_session", { "workbench.session_present": Boolean(token) }, async () => {
-    try {
-      const { payload } = await jwtVerify(token, secretKey());
-      return payload as unknown as SessionPayload;
-    } catch {
-      return null;
-    }
-  });
+  return withSpan(
+    "auth.verify_session",
+    { "workbench.session_present": Boolean(token) },
+    async () => {
+      try {
+        const { payload } = await jwtVerify(token, secretKey());
+        return payload as unknown as SessionPayload;
+      } catch {
+        return null;
+      }
+    },
+  );
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
+export interface SessionMembershipState {
+  id: string;
+  orgId: string;
+  userId: string;
+  active: boolean;
+  sessionVersion: number;
+}
+
+export function sessionMembershipIsCurrent(
+  session: SessionPayload,
+  membership: SessionMembershipState | null | undefined,
+): boolean {
+  return Boolean(
+    session.membershipId &&
+      session.sessionVersion != null &&
+      membership &&
+      membership.id === session.membershipId &&
+      membership.orgId === session.orgId &&
+      membership.userId === session.userId &&
+      membership.active &&
+      membership.sessionVersion === session.sessionVersion,
+  );
+}
+
+/** Read and cryptographically verify the cookie without consulting the DB. */
+export async function getTokenSession(): Promise<SessionPayload | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   return verifySessionToken(token);
+}
+
+/**
+ * Return a session only while its organization membership is still active and
+ * unchanged. Legacy tokens without membership versioning fail closed.
+ */
+export async function getSession(): Promise<SessionPayload | null> {
+  const session = await getTokenSession();
+  if (!session?.membershipId || session.sessionVersion == null) return null;
+  const membership = await withTenantTransaction(
+    session.orgId,
+    () =>
+      db.query.memberships.findFirst({
+        where: and(
+          eq(schema.memberships.id, session.membershipId!),
+          eq(schema.memberships.orgId, session.orgId),
+          eq(schema.memberships.userId, session.userId),
+        ),
+        columns: {
+          id: true,
+          orgId: true,
+          userId: true,
+          active: true,
+          sessionVersion: true,
+        },
+      }),
+    session.userId,
+  );
+  return sessionMembershipIsCurrent(session, membership) ? session : null;
 }
 
 export function sessionCookieOptions(maxAge = SESSION_TTL_SECONDS) {

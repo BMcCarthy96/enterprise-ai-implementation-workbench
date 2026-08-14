@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -21,6 +22,7 @@ interface Ctx {
   selected: Set<string>;
   toggle: (id: string) => void;
   busy: boolean;
+  setBusy: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const BulkCtx = createContext<Ctx | null>(null);
@@ -44,19 +46,20 @@ export function BulkSelectionProvider({
   children: React.ReactNode;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [busy] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const toggle = useCallback((id: string) => {
+    if (busy) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }, []);
+  }, [busy]);
 
   const value = useMemo(
-    () => ({ items, selected, toggle, busy }),
+    () => ({ items, selected, toggle, busy, setBusy }),
     [items, selected, toggle, busy],
   );
 
@@ -94,8 +97,7 @@ export function ApprovalCheckbox({
   id: string;
   label: string;
 }) {
-  const { selected, busy } = useBulk();
-  const { toggle } = useBulk();
+  const { selected, busy, toggle } = useBulk();
   return (
     <input
       type="checkbox"
@@ -113,7 +115,7 @@ export function ApprovalCheckbox({
  * API so a stale selection ("already decided") is visible rather than silent.
  */
 export function BulkActionBar() {
-  const { items, selected } = useBulk();
+  const { items, selected, busy, setBusy } = useBulk();
   const setSelected = useContext(SetSelectedCtx);
   const router = useRouter();
 
@@ -121,10 +123,11 @@ export function BulkActionBar() {
   const [reasonCode, setReasonCode] = useState<string>(REJECTION_REASONS[0].value);
   const [note, setNote] = useState("");
   const [regenerate, setRegenerate] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const idempotencyKey = useRef<string | null>(null);
+  const reasonId = useId();
+  const noteId = useId();
 
   const count = selected.size;
   const allSelected = count > 0 && count === items.length;
@@ -181,6 +184,7 @@ export function BulkActionBar() {
             type="checkbox"
             className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
             checked={allSelected}
+            disabled={busy}
             onChange={toggleAll}
             aria-label="Select all approvals"
           />
@@ -219,9 +223,11 @@ export function BulkActionBar() {
       {rejecting && (
         <div className="mt-3 space-y-2 rounded-md border border-red-100 bg-red-50/50 p-3">
           <div>
-            <label className="label">Rejection reason (applies to all selected)</label>
+            <label className="label" htmlFor={reasonId}>Rejection reason (applies to all selected)</label>
             <select
+              id={reasonId}
               className="input"
+              disabled={busy}
               value={reasonCode}
               onChange={(e) => setReasonCode(e.target.value)}
             >
@@ -233,9 +239,11 @@ export function BulkActionBar() {
             </select>
           </div>
           <div>
-            <label className="label">Note (optional)</label>
+            <label className="label" htmlFor={noteId}>Note (optional)</label>
             <textarea
+              id={noteId}
               className="input"
+              disabled={busy}
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -248,11 +256,12 @@ export function BulkActionBar() {
                 type="checkbox"
                 className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                 checked={regenerate}
+                disabled={busy}
                 onChange={(e) => setRegenerate(e.target.checked)}
               />
               <span>
                 Automatically generate revised plans
-                <span className="block text-xs text-gray-400">
+                <span className="block text-xs text-gray-500">
                   Applies to selected plans; customer updates are unaffected.
                 </span>
               </span>

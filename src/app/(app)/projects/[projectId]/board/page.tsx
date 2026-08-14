@@ -63,7 +63,7 @@ export default async function BoardPage({
           <div key={col.key} className="rounded-lg bg-gray-100/70 p-2">
             <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
               <span>{col.label}</span>{" "}
-              <span className="font-normal text-gray-400">
+              <span className="font-normal text-gray-500">
                 {colTasks.length}
               </span>
             </p>

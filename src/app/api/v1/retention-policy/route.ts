@@ -1,22 +1,15 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { parseBody, withAuth } from "@/lib/api";
+import { UpdateRetentionPolicySchema } from "@/lib/apiSchemas";
 import { getRetentionPolicy, saveRetentionPolicy } from "@/server/services/retention";
 import { recordAudit } from "@/server/services/audit";
-
-const RetentionSchema = z.object({
-  auditDays: z.number().int().optional(),
-  aiDetailDays: z.number().int().optional(),
-  completedJobDays: z.number().int().optional(),
-  webhookDeliveryDays: z.number().int().optional(),
-});
 
 export const GET = withAuth("org.manage_retention", async (_request, ctx) => {
   return NextResponse.json({ policy: await getRetentionPolicy(ctx.session.orgId) });
 });
 
 export const PUT = withAuth("org.manage_retention", async (request, ctx) => {
-  const input = await parseBody(request, RetentionSchema);
+  const input = await parseBody(request, UpdateRetentionPolicySchema);
   try {
     const policy = await saveRetentionPolicy(ctx.session.orgId, ctx.session.userId, input);
     await recordAudit({ orgId: ctx.session.orgId, actorId: ctx.session.userId, action: "retention_policy.updated", subjectType: "retention_policy", subjectId: policy.id, metadata: { auditDays: policy.auditDays, aiDetailDays: policy.aiDetailDays, completedJobDays: policy.completedJobDays, webhookDeliveryDays: policy.webhookDeliveryDays } });

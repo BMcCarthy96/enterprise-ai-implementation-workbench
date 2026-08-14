@@ -54,6 +54,19 @@ describe("grounding primitives", () => {
     expect(result.counts.phone).toBe(0);
   });
 
+  it("does not redact numeric substrings inside requirement UUIDs", () => {
+    const ids = [
+      "91052d95-332d-4a93-be08-b6022662789f",
+      "d45f24e3-5aee-4ece-99c8-278247993ec0",
+      "36984598-0309-4bc9-9fc7-573b4096aa91",
+    ];
+    const result = redactSensitiveText(JSON.stringify({ requirementIds: ids }));
+    expect(result.text).toContain(ids[0]);
+    expect(result.text).toContain(ids[1]);
+    expect(result.text).toContain(ids[2]);
+    expect(result.counts.phone).toBe(0);
+  });
+
   it("preserves structured customer field names while redacting labeled ids", () => {
     const result = redactSensitiveText(
       '{"customerName":"Brightlane","customerIndustry":"Health","customerId":"public-key","note":"account id 1234-ABCD"}',

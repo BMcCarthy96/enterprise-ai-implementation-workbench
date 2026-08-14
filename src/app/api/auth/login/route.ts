@@ -9,6 +9,7 @@ import {
   sessionCookieOptions,
 } from "@/lib/auth/session";
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 import { recordAudit } from "@/server/services/audit";
 
 const LoginSchema = z.object({
@@ -22,6 +23,12 @@ const DUMMY_PASSWORD_HASH =
   "$2b$12$50t6qVJIbPO2W9pU9MmLJem0HML00HEZuplazgT.qyHbK/dzI4Vea";
 
 export async function POST(req: NextRequest) {
+  if (env().WORKBENCH_ENV_MODE === "showcase") {
+    return NextResponse.json(
+      { error: "Password sign-in is disabled in the public showcase. Launch an isolated demo workspace instead." },
+      { status: 403 },
+    );
+  }
   let body: unknown;
   try {
     body = await req.json();

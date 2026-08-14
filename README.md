@@ -228,7 +228,7 @@ The isolated demo exposes the same workflow through four synthetic identities â€
 
 The Insights page also separates live telemetry from the committed **offline regression suite**. The scorecard shows case count, categories, prompt variants, hard-gate status, baseline delta, provider, suite version, and freshness (stale after 30 days).
 
-The **Deterministic Contract Regression Suite** covers 15 synthetic cases across three prompt variants, including paired retrieval-on/retrieval-off fixtures, and writes a committed baseline to `evals/baseline.json`. It verifies schema, guardrail, citation, and persistence contracts; its perfect fixture score is not a claim about live model quality. Real-provider quality evaluation remains an explicit, budget-capped workflow:
+The **Deterministic Contract Regression Suite** covers 15 synthetic cases across three prompt variants, including paired retrieval-on/retrieval-off fixtures, and writes a committed baseline to `evals/baseline.json`. It verifies schema, guardrail, citation, and coverage contracts; its perfect fixture score is not a claim about live model quality. Real-provider quality evaluation remains explicit and opt-in. The four-case smoke lane is the lower-volume starting point, but the repository does not claim a hard currency spend cap:
 
 ```bash
 npm run eval:offline   # deterministic contract regression suite

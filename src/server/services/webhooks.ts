@@ -34,13 +34,28 @@ export function isBlockedHost(host: string): boolean {
   const normalized = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
   if (normalized === "localhost" || normalized.endsWith(".localhost")) return true;
   if (normalized.includes(":")) {
-    const mapped = normalized.match(/::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
-    if (mapped && isBlockedHost(mapped[1])) return true;
-    return normalized === "::" || normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || /^fe[89ab]/.test(normalized) || normalized.startsWith("ff") || normalized.startsWith("2001:db8:") || normalized.startsWith("100:");
+    // Reject all IPv4-mapped spellings, including hexadecimal forms such as
+    // ::ffff:7f00:1. DNS returns ordinary IPv4 addresses separately, so there
+    // is no legitimate need to accept this ambiguity at an integration edge.
+    if (normalized.startsWith("::ffff:")) return true;
+    return normalized === "::" || normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || /^fe[89ab]/.test(normalized) || normalized.startsWith("ff") || normalized.startsWith("2001:db8:") || normalized.startsWith("100:") || normalized.startsWith("64:ff9b:1:") || normalized.startsWith("2001:0:") || normalized.startsWith("2001:2:") || normalized.startsWith("2001:10:") || /^2001:2[0-9a-f]:/.test(normalized) || normalized.startsWith("2002:");
   }
   const parts = normalized.split(".").map(Number);
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) return false;
-  return parts[0] === 10 || parts[0] === 127 || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168) || (parts[0] === 169 && parts[1] === 254);
+  return parts.some((part) => part < 0 || part > 255) ||
+    parts[0] === 0 ||
+    parts[0] === 10 ||
+    (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) ||
+    parts[0] === 127 ||
+    (parts[0] === 169 && parts[1] === 254) ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 0 && parts[2] === 0) ||
+    (parts[0] === 192 && parts[1] === 0 && parts[2] === 2) ||
+    (parts[0] === 192 && parts[1] === 168) ||
+    (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19)) ||
+    (parts[0] === 198 && parts[1] === 51 && parts[2] === 100) ||
+    (parts[0] === 203 && parts[1] === 0 && parts[2] === 113) ||
+    parts[0] >= 224;
 }
 
 export async function createWebhookEndpoint(input: { orgId: string; actorId: string; url: string; eventTypes: Array<(typeof schema.webhookEventTypes)[number]> }) {

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { withTenantTransaction } from "@/db";
-import { getSession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getTokenSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { logger } from "@/lib/logger";
 import { recordAudit } from "@/server/services/audit";
 
 export async function POST() {
-  const session = await getSession();
+  const session = await getTokenSession();
   if (session) {
     try {
       await withTenantTransaction(
@@ -22,7 +22,10 @@ export async function POST() {
       );
     } catch (error) {
       // Session clearing must remain available during a database incident.
-      logger.warn({ error: String(error) }, "logout audit could not be persisted");
+      logger.warn(
+        { error: String(error) },
+        "logout audit could not be persisted",
+      );
     }
   }
   const res = NextResponse.json({ ok: true });

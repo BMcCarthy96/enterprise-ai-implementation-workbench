@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
 import { db, schema, withTenantTransaction } from "@/db";
 import { PlanContentSchema } from "@/lib/ai/planSchema";
@@ -25,6 +25,48 @@ export interface DecisionInput {
 export interface DecisionResult {
   /** Set when a rejection kicked off an automatic revised-plan generation. */
   regenerationJobId?: string;
+}
+
+/**
+ * Bind an idempotency key to the exact consequential request it represents.
+ * Object keys are intentionally fixed here so equivalent requests hash
+ * deterministically without relying on caller JSON property order.
+ */
+export function approvalDecisionFingerprint(input: DecisionInput): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        approvalId: input.approvalId,
+        orgId: input.orgId,
+        decidedBy: input.decidedBy,
+        decision: input.decision,
+        reasonCode: input.reasonCode ?? null,
+        note: input.note ?? null,
+        regenerate: input.regenerate === true,
+      }),
+    )
+    .digest("hex");
+}
+
+export function replayDecision(
+  existing: Pick<
+    typeof schema.approvals.$inferSelect,
+    "decisionKey" | "decisionFingerprint" | "regenerationJobId"
+  >,
+  input: DecisionInput,
+  fingerprint: string,
+): DecisionResult | undefined {
+  if (!input.idempotencyKey || existing.decisionKey !== input.idempotencyKey) {
+    return undefined;
+  }
+  if (existing.decisionFingerprint !== fingerprint) {
+    throw new ApiError(
+      409,
+      "This Idempotency-Key was already used with a different approval decision",
+      "IDEMPOTENCY_KEY_REUSED",
+    );
+  }
+  return { regenerationJobId: existing.regenerationJobId ?? undefined };
 }
 
 /**
@@ -63,110 +105,149 @@ export async function decideApproval(
 async function decideApprovalInternal(
   input: DecisionInput,
 ): Promise<DecisionResult> {
-  return withTenantTransaction(input.orgId, async () => {
-    if (input.decision === "rejected" && !input.reasonCode) {
-      throw new ApiError(400, "A reason code is required when rejecting");
-    }
-
-    const existing = await db.query.approvals.findFirst({
-      where: and(
-        eq(schema.approvals.id, input.approvalId),
-        eq(schema.approvals.orgId, input.orgId),
-      ),
-    });
-    if (!existing) throw new ApiError(404, "Approval not found");
-    if (input.decision === "approved" && existing.subjectType === "plan" && existing.requestedBy === input.decidedBy) {
-      throw new ApiError(403, "Maker-checker policy: the requester cannot approve their own AI plan", "MAKER_CHECKER_REQUIRED");
-    }
-    if (existing.status !== "pending") {
-      if (input.idempotencyKey && existing.decisionKey === input.idempotencyKey) {
-        return { regenerationJobId: existing.regenerationJobId ?? undefined };
+  return withTenantTransaction(
+    input.orgId,
+    async () => {
+      if (input.decision === "rejected" && !input.reasonCode) {
+        throw new ApiError(400, "A reason code is required when rejecting");
       }
-      throw new ApiError(409, `This item was already ${existing.status}`);
-    }
+      const decisionFingerprint = approvalDecisionFingerprint(input);
 
-    // Conditional update is the concurrency boundary: only one reviewer can
-    // transition a pending approval, even when requests race.
-    const [approval] = await db
-      .update(schema.approvals)
-      .set({
-        status: input.decision,
-        decidedBy: input.decidedBy,
-        decidedAt: new Date(),
-        reasonCode: input.reasonCode ?? null,
-        note: input.note ?? null,
-        decisionKey: input.idempotencyKey ?? null,
-      })
-      .where(and(
-        eq(schema.approvals.id, input.approvalId),
-        eq(schema.approvals.orgId, input.orgId),
-        eq(schema.approvals.status, "pending"),
-      ))
-      .returning();
-    if (!approval) throw new ApiError(409, "This item was already decided");
+      const existing = await db.query.approvals.findFirst({
+        where: and(
+          eq(schema.approvals.id, input.approvalId),
+          eq(schema.approvals.orgId, input.orgId),
+        ),
+      });
+      if (!existing) throw new ApiError(404, "Approval not found");
+      if (
+        input.decision === "approved" &&
+        existing.subjectType === "plan" &&
+        existing.requestedBy === input.decidedBy
+      ) {
+        throw new ApiError(
+          403,
+          "Maker-checker policy: the requester cannot approve their own AI plan",
+          "MAKER_CHECKER_REQUIRED",
+        );
+      }
+      if (existing.status !== "pending") {
+        const replay = replayDecision(existing, input, decisionFingerprint);
+        if (replay) return replay;
+        throw new ApiError(409, `This item was already ${existing.status}`);
+      }
 
-    if (approval.subjectType === "plan") {
-      await applyPlanDecision(approval.subjectId, input);
-    } else if (approval.subjectType === "customer_update") {
-      await applyUpdateDecision(approval.subjectId, input);
-    }
+      // Conditional update is the concurrency boundary: only one reviewer can
+      // transition a pending approval, even when requests race.
+      const [approval] = await db
+        .update(schema.approvals)
+        .set({
+          status: input.decision,
+          decidedBy: input.decidedBy,
+          decidedAt: new Date(),
+          reasonCode: input.reasonCode ?? null,
+          note: input.note ?? null,
+          decisionKey: input.idempotencyKey ?? null,
+          decisionFingerprint,
+        })
+        .where(
+          and(
+            eq(schema.approvals.id, input.approvalId),
+            eq(schema.approvals.orgId, input.orgId),
+            eq(schema.approvals.status, "pending"),
+          ),
+        )
+        .returning();
+      if (!approval) {
+        // A same-key concurrent request can read `pending`, wait on the winner's
+        // conditional update, then observe zero updated rows. Re-read so an exact
+        // replay receives the original result instead of a false conflict.
+        const decided = await db.query.approvals.findFirst({
+          where: and(
+            eq(schema.approvals.id, input.approvalId),
+            eq(schema.approvals.orgId, input.orgId),
+          ),
+          columns: {
+            decisionKey: true,
+            decisionFingerprint: true,
+            regenerationJobId: true,
+          },
+        });
+        if (decided) {
+          const replay = replayDecision(decided, input, decisionFingerprint);
+          if (replay) return replay;
+        }
+        throw new ApiError(409, "This item was already decided");
+      }
 
-  await recordAudit({
-    orgId: input.orgId,
-    actorId: input.decidedBy,
-    action: `approval.${input.decision}`,
-    subjectType: approval.subjectType,
-    subjectId: approval.subjectId,
-    projectId: approval.projectId,
-    metadata: {
-      approvalId: approval.id,
-      reasonCode: input.reasonCode ?? null,
-      note: input.note ?? null,
+      if (approval.subjectType === "plan") {
+        await applyPlanDecision(approval.subjectId, input);
+      } else if (approval.subjectType === "customer_update") {
+        await applyUpdateDecision(approval.subjectId, input);
+      }
+
+      await recordAudit({
+        orgId: input.orgId,
+        actorId: input.decidedBy,
+        action: `approval.${input.decision}`,
+        subjectType: approval.subjectType,
+        subjectId: approval.subjectId,
+        projectId: approval.projectId,
+        metadata: {
+          approvalId: approval.id,
+          reasonCode: input.reasonCode ?? null,
+          note: input.note ?? null,
+        },
+      });
+      await queueWebhookEvent({
+        type: "approval.decided",
+        orgId: input.orgId,
+        actorId: input.decidedBy,
+        subjectId: approval.subjectId,
+        data: {
+          approvalId: approval.id,
+          subjectType: approval.subjectType,
+          decision: input.decision,
+          reasonCode: input.reasonCode ?? null,
+        },
+      });
+      if (
+        approval.subjectType === "customer_update" &&
+        input.decision === "approved"
+      ) {
+        await queueWebhookEvent({
+          type: "customer_update.published",
+          orgId: input.orgId,
+          actorId: input.decidedBy,
+          subjectId: approval.subjectId,
+          data: { approvalId: approval.id },
+        });
+      }
+
+      // Closed feedback loop: on a plan rejection the reviewer can opt to have a
+      // revised plan generated immediately. The worker's generation path already
+      // pulls the latest rejection's reason + note into the prompt.
+      let regenerationJobId: string | undefined;
+      if (
+        wantsRegeneration({
+          decision: input.decision,
+          subjectType: approval.subjectType,
+          regenerate: input.regenerate,
+        })
+      ) {
+        regenerationJobId = await queueRegeneration(approval, input.decidedBy);
+      }
+
+      if (regenerationJobId) {
+        await db
+          .update(schema.approvals)
+          .set({ regenerationJobId })
+          .where(eq(schema.approvals.id, approval.id));
+      }
+      return { regenerationJobId };
     },
-  });
-  await queueWebhookEvent({
-    type: "approval.decided",
-    orgId: input.orgId,
-    actorId: input.decidedBy,
-    subjectId: approval.subjectId,
-    data: {
-      approvalId: approval.id,
-      subjectType: approval.subjectType,
-      decision: input.decision,
-      reasonCode: input.reasonCode ?? null,
-    },
-  });
-  if (approval.subjectType === "customer_update" && input.decision === "approved") {
-    await queueWebhookEvent({
-      type: "customer_update.published",
-      orgId: input.orgId,
-      actorId: input.decidedBy,
-      subjectId: approval.subjectId,
-      data: { approvalId: approval.id },
-    });
-  }
-
-  // Closed feedback loop: on a plan rejection the reviewer can opt to have a
-  // revised plan generated immediately. The worker's generation path already
-  // pulls the latest rejection's reason + note into the prompt.
-  let regenerationJobId: string | undefined;
-  if (
-    wantsRegeneration({
-      decision: input.decision,
-      subjectType: approval.subjectType,
-      regenerate: input.regenerate,
-    })
-  ) {
-    regenerationJobId = await queueRegeneration(approval, input.decidedBy);
-  }
-
-    if (regenerationJobId) {
-      await db.update(schema.approvals)
-        .set({ regenerationJobId })
-        .where(eq(schema.approvals.id, approval.id));
-    }
-    return { regenerationJobId };
-  }, input.decidedBy);
+    input.decidedBy,
+  );
 }
 
 export interface BulkDecisionInput extends Omit<DecisionInput, "approvalId"> {
@@ -223,7 +304,9 @@ export async function decideApprovalsBulk(
       const { regenerationJobId } = await decideApproval({
         ...input,
         approvalId,
-        idempotencyKey: input.idempotencyKey ? `${input.idempotencyKey}:${approvalId}` : `bulk-${randomUUID()}`,
+        idempotencyKey: input.idempotencyKey
+          ? `${input.idempotencyKey}:${approvalId}`
+          : `bulk-${randomUUID()}`,
       });
       result.succeeded.push({ approvalId, regenerationJobId });
       if (regenerationJobId) result.regenerationJobCount += 1;
@@ -231,7 +314,10 @@ export async function decideApprovalsBulk(
       const status = err instanceof ApiError ? err.status : 500;
       const message = err instanceof Error ? err.message : "Decision failed";
       if (status >= 500) {
-        logger.error({ err: String(err), approvalId }, "bulk decision item failed");
+        logger.error(
+          { err: String(err), approvalId },
+          "bulk decision item failed",
+        );
       }
       result.failed.push({ approvalId, status, message });
     }
@@ -290,7 +376,10 @@ async function queueRegeneration(
 
 async function applyPlanDecision(planId: string, input: DecisionInput) {
   const plan = await db.query.plans.findFirst({
-    where: and(eq(schema.plans.id, planId), eq(schema.plans.orgId, input.orgId)),
+    where: and(
+      eq(schema.plans.id, planId),
+      eq(schema.plans.orgId, input.orgId),
+    ),
   });
   if (!plan) throw new ApiError(404, "Plan not found");
 
@@ -298,7 +387,9 @@ async function applyPlanDecision(planId: string, input: DecisionInput) {
     await db
       .update(schema.plans)
       .set({ status: "rejected" })
-      .where(and(eq(schema.plans.id, planId), eq(schema.plans.orgId, input.orgId)));
+      .where(
+        and(eq(schema.plans.id, planId), eq(schema.plans.orgId, input.orgId)),
+      );
     return;
   }
 
@@ -308,64 +399,67 @@ async function applyPlanDecision(planId: string, input: DecisionInput) {
   // deliberately uses the ambient tenant transaction created by
   // decideApproval; opening a base transaction here would lose RLS context.
   await db
-      .update(schema.plans)
-      .set({ status: "superseded" })
-      .where(
-        and(
-          eq(schema.plans.projectId, plan.projectId),
-          eq(schema.plans.status, "approved"),
-          ne(schema.plans.id, planId),
-        ),
-      );
-    await db
-      .update(schema.plans)
-      .set({ status: "approved" })
-      .where(eq(schema.plans.id, planId));
+    .update(schema.plans)
+    .set({ status: "superseded" })
+    .where(
+      and(
+        eq(schema.plans.projectId, plan.projectId),
+        eq(schema.plans.status, "approved"),
+        ne(schema.plans.id, planId),
+      ),
+    );
+  await db
+    .update(schema.plans)
+    .set({ status: "approved" })
+    .where(eq(schema.plans.id, planId));
 
-    // Materialize milestones and tasks from the approved plan content.
-    for (const [i, m] of content.milestones.entries()) {
-      const existingMilestone = await db.query.milestones.findFirst({
-        where: and(eq(schema.milestones.planId, plan.id), eq(schema.milestones.sortOrder, i)),
-        columns: { id: true },
-      });
-      if (existingMilestone) continue;
-      const [milestone] = await db
-        .insert(schema.milestones)
-        .values({
-          orgId: plan.orgId,
-          projectId: plan.projectId,
-          planId: plan.id,
-          name: m.name,
-          description: m.description,
-          sortOrder: i,
-        })
-        .returning({ id: schema.milestones.id });
+  // Materialize milestones and tasks from the approved plan content.
+  for (const [i, m] of content.milestones.entries()) {
+    const existingMilestone = await db.query.milestones.findFirst({
+      where: and(
+        eq(schema.milestones.planId, plan.id),
+        eq(schema.milestones.sortOrder, i),
+      ),
+      columns: { id: true },
+    });
+    if (existingMilestone) continue;
+    const [milestone] = await db
+      .insert(schema.milestones)
+      .values({
+        orgId: plan.orgId,
+        projectId: plan.projectId,
+        planId: plan.id,
+        name: m.name,
+        description: m.description,
+        sortOrder: i,
+      })
+      .returning({ id: schema.milestones.id });
 
-      await db.insert(schema.tasks).values(
-        m.tasks.map((t, j) => ({
-          orgId: plan.orgId,
-          projectId: plan.projectId,
-          milestoneId: milestone.id,
-          title: t.title,
-          description: t.description || null,
-          sortOrder: j,
-        })),
-      );
-    }
+    await db.insert(schema.tasks).values(
+      m.tasks.map((t, j) => ({
+        orgId: plan.orgId,
+        projectId: plan.projectId,
+        milestoneId: milestone.id,
+        title: t.title,
+        description: t.description || null,
+        sortOrder: j,
+      })),
+    );
+  }
 
-    await db
-      .update(schema.requirements)
-      .set({ status: "in_plan" })
-      .where(
-        and(
-          eq(schema.requirements.projectId, plan.projectId),
-          eq(schema.requirements.status, "new"),
-        ),
-      );
-    await db
-      .update(schema.projects)
-      .set({ status: "in_delivery", updatedAt: new Date() })
-      .where(eq(schema.projects.id, plan.projectId));
+  await db
+    .update(schema.requirements)
+    .set({ status: "in_plan" })
+    .where(
+      and(
+        eq(schema.requirements.projectId, plan.projectId),
+        eq(schema.requirements.status, "new"),
+      ),
+    );
+  await db
+    .update(schema.projects)
+    .set({ status: "in_delivery", updatedAt: new Date() })
+    .where(eq(schema.projects.id, plan.projectId));
 }
 
 async function applyUpdateDecision(updateId: string, input: DecisionInput) {
@@ -373,11 +467,21 @@ async function applyUpdateDecision(updateId: string, input: DecisionInput) {
     await db
       .update(schema.customerUpdates)
       .set({ status: "published", publishedAt: new Date() })
-      .where(and(eq(schema.customerUpdates.id, updateId), eq(schema.customerUpdates.orgId, input.orgId)));
+      .where(
+        and(
+          eq(schema.customerUpdates.id, updateId),
+          eq(schema.customerUpdates.orgId, input.orgId),
+        ),
+      );
   } else {
     await db
       .update(schema.customerUpdates)
       .set({ status: "rejected" })
-      .where(and(eq(schema.customerUpdates.id, updateId), eq(schema.customerUpdates.orgId, input.orgId)));
-}
+      .where(
+        and(
+          eq(schema.customerUpdates.id, updateId),
+          eq(schema.customerUpdates.orgId, input.orgId),
+        ),
+      );
+  }
 }

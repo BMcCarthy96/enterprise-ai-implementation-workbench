@@ -5,7 +5,12 @@ import { randomUUID } from "node:crypto";
 import { db, dbAdmin, schema, withTenantTransaction } from "@/db";
 import { deleteMessage, receiveJobs } from "@/lib/aws/sqs";
 import { logger } from "@/lib/logger";
-import { backoffSeconds, dispatchJob, dispatchUndeliveredJobs, reclaimExpiredJobs } from "@/server/services/jobs";
+import {
+  backoffSeconds,
+  dispatchJob,
+  dispatchUndeliveredJobs,
+  reclaimExpiredJobs,
+} from "@/server/services/jobs";
 import { recordAudit } from "@/server/services/audit";
 import { runPlanGenerationJob } from "@/server/services/planGeneration";
 import { runDigestJob } from "@/server/services/digest";
@@ -15,9 +20,11 @@ import {
   runDocumentIngestionJob,
 } from "@/server/services/documentIngestion";
 import { reconcileDemoGeneration } from "@/server/services/demo";
-import { deliverWebhookJob, queueWebhookEvent } from "@/server/services/webhooks";
+import {
+  deliverWebhookJob,
+  queueWebhookEvent,
+} from "@/server/services/webhooks";
 import { withSpan } from "@/lib/telemetry";
-import { registerOTel } from "@vercel/otel";
 
 /**
  * Background worker: long-polls SQS for job pointers and executes them.
@@ -39,16 +46,37 @@ const LEASE_MS = 60_000;
 const HEARTBEAT_MS = 15_000;
 const WORKER_ID = `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
 
-let telemetryRegistered = false;
-function registerWorkerTelemetry() {
-  if (telemetryRegistered || process.env.OTEL_SDK_DISABLED === "true") return;
-  const endpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
-  if (!endpoint && process.env.WORKBENCH_OTEL_ENABLED !== "true") return;
-  registerOTel({ serviceName: process.env.OTEL_SERVICE_NAME ?? "enterprise-ai-workbench-worker" });
-  telemetryRegistered = true;
+class LostJobLeaseError extends Error {
+  constructor() {
+    super("Job lease was reclaimed before this worker could commit");
+    this.name = "LostJobLeaseError";
+  }
 }
 
-registerWorkerTelemetry();
+let telemetryRegistration: Promise<void> | undefined;
+async function ensureWorkerTelemetry() {
+  if (process.env.OTEL_SDK_DISABLED === "true") return;
+  const endpoint =
+    process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ??
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+  if (!endpoint && process.env.WORKBENCH_OTEL_ENABLED !== "true") return;
+  telemetryRegistration ??= import("@vercel/otel")
+    .then(({ registerOTel }) => {
+      registerOTel({
+        serviceName:
+          process.env.OTEL_SERVICE_NAME ?? "enterprise-ai-workbench-worker",
+      });
+    })
+    .catch((error) => {
+      // Telemetry is supporting infrastructure. A collector or SDK mismatch
+      // must remain visible without taking the durable job processor offline.
+      log.warn(
+        { error: String(error) },
+        "worker telemetry initialization failed; continuing without export",
+      );
+    });
+  await telemetryRegistration;
+}
 
 const HANDLERS: Record<
   (typeof schema.jobType.enumValues)[number],
@@ -66,183 +94,358 @@ const HANDLERS: Record<
 };
 
 function demoReservationUsd(payload: unknown): number {
-  if (typeof payload !== "object" || payload === null || !("demoReservationUsd" in payload)) {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("demoReservationUsd" in payload)
+  ) {
     return 0;
   }
-  const value = Number((payload as { demoReservationUsd?: unknown }).demoReservationUsd);
+  const value = Number(
+    (payload as { demoReservationUsd?: unknown }).demoReservationUsd,
+  );
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 export async function processJob(jobId: string): Promise<void> {
-  return withSpan("worker.process_job", { "workbench.job_id": jobId }, async () => {
-  // A worker receives only the job id. Resolve its organization through the
-  // admin connection first, then perform every runtime query inside the
-  // tenant transaction so production RLS is active even before the first
-  // claim/update.
-  const candidate = await dbAdmin.query.jobs.findFirst({
-    where: eq(schema.jobs.id, jobId),
-  });
-  if (!candidate) {
-    log.info({ jobId }, "job not found; dropping message");
-    return;
-  }
-
-  // Atomically claim the job. A queued job is new work; an expired running
-  // lease is recoverable work from a worker that crashed after claiming.
-  const now = new Date();
-  const claimed = await withTenantTransaction(candidate.orgId, () =>
-    db.update(schema.jobs)
-      .set({
-        status: "running",
-        startedAt: now,
-        heartbeatAt: now,
-        leaseOwner: WORKER_ID,
-        leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
-        attempts: sql`${schema.jobs.attempts} + 1`,
-      })
-      .where(and(
-        eq(schema.jobs.id, jobId),
-        or(
-          eq(schema.jobs.status, "queued"),
-          and(
-            eq(schema.jobs.status, "running"),
-            or(isNull(schema.jobs.leaseExpiresAt), lt(schema.jobs.leaseExpiresAt, now)),
-          ),
-        ),
-      ))
-      .returning(),
-  );
-  if (claimed.length === 0) {
-    log.info({ jobId }, "job not claimable (already running or finished)");
-    return;
-  }
-  const job = claimed[0];
-  const attempt = job.attempts;
-  await withTenantTransaction(job.orgId, () => db.insert(schema.jobAttempts).values({
-    jobId: job.id,
-    orgId: job.orgId,
-    attempt,
-    workerId: WORKER_ID,
-    traceId: job.traceId,
-  }));
-  const jobLog = log.child({ jobId, type: job.type, attempt, workerId: WORKER_ID });
-  const started = Date.now();
-  const heartbeat = setInterval(() => {
-    void withTenantTransaction(job.orgId, () => db.update(schema.jobs)
-      .set({ heartbeatAt: new Date(), leaseExpiresAt: new Date(Date.now() + LEASE_MS) })
-      .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.leaseOwner, WORKER_ID))))
-      .catch((error) => jobLog.warn({ error: String(error) }, "job heartbeat failed"));
-  }, HEARTBEAT_MS);
-
-  try {
-    const reservedUsd = demoReservationUsd(job.payload);
-    await withTenantTransaction(job.orgId, async () => {
-      await HANDLERS[job.type](job);
-      await db
-        .update(schema.jobs)
-        .set({
-          status: "succeeded",
-          finishedAt: new Date(),
-          durationMs: Date.now() - started,
-          lastError: null,
-          leaseOwner: null,
-          leaseExpiresAt: null,
-          heartbeatAt: new Date(),
-        })
-        .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.leaseOwner, WORKER_ID)));
-      await db.update(schema.jobAttempts)
-        .set({ status: "succeeded", finishedAt: new Date(), durationMs: Date.now() - started })
-        .where(and(eq(schema.jobAttempts.jobId, job.id), eq(schema.jobAttempts.attempt, attempt)));
-    });
-    if (reservedUsd) {
-      await reconcileDemoGeneration({ orgId: job.orgId, reservedUsd }).catch((error) => {
-        jobLog.warn({ error: String(error) }, "demo spend reservation reconciliation failed");
+  await ensureWorkerTelemetry();
+  return withSpan(
+    "worker.process_job",
+    { "workbench.job_id": jobId },
+    async () => {
+      // A worker receives only the job id. Resolve its organization through the
+      // admin connection first, then perform every runtime query inside the
+      // tenant transaction so production RLS is active even before the first
+      // claim/update.
+      const candidate = await dbAdmin.query.jobs.findFirst({
+        where: eq(schema.jobs.id, jobId),
       });
-    }
-    jobLog.info({ durationMs: Date.now() - started }, "job succeeded");
-  } catch (err) {
-    const attempts = job.attempts;
-    const message = err instanceof Error ? err.message : String(err);
-    const exhausted = attempts >= job.maxAttempts;
-
-    await withTenantTransaction(job.orgId, async () => {
-      if (err instanceof DocumentIngestionError) {
-        await markDocumentIngestionFailed(err);
+      if (!candidate) {
+        log.info({ jobId }, "job not found; dropping message");
+        return;
       }
-      await db
-        .update(schema.jobs)
-        .set({
-          status: exhausted ? "dead_letter" : "failed",
-          attempts,
-          finishedAt: new Date(),
-          durationMs: Date.now() - started,
-          lastError: message,
-          leaseOwner: null,
-          leaseExpiresAt: null,
-          heartbeatAt: new Date(),
-        })
-        .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.leaseOwner, WORKER_ID)));
-      await db.update(schema.jobAttempts)
-        .set({ status: exhausted ? "dead_letter" : "failed", finishedAt: new Date(), durationMs: Date.now() - started, error: message })
-        .where(and(eq(schema.jobAttempts.jobId, job.id), eq(schema.jobAttempts.attempt, attempt)));
-    });
 
-    if (exhausted) {
-      const reservedUsd = demoReservationUsd(job.payload);
-      if (reservedUsd) {
-        await reconcileDemoGeneration({ orgId: job.orgId, reservedUsd }).catch((error) => {
-          jobLog.warn({ error: String(error) }, "demo spend reservation release failed");
-        });
-      }
-      jobLog.error({ err: message, attempts }, "job exhausted retries; dead-lettered");
-      await withTenantTransaction(job.orgId, () =>
-        recordAudit({
-          orgId: job.orgId,
-          action: "job.dead_letter",
-          subjectType: "job",
-          subjectId: job.id,
-          projectId: job.projectId,
-          metadata: { type: job.type, attempts, error: message },
-        }),
-      );
-      // Notify configured integrations after the dead-letter state and audit
-      // row are durable. Delivery itself is another durable job, so a
-      // transient webhook outage cannot change the worker outcome.
-      await withTenantTransaction(job.orgId, () =>
-        queueWebhookEvent({
-          orgId: job.orgId,
-          actorId: job.requestedBy ?? undefined,
-          subjectId: job.id,
-          type: "job.dead_letter",
-          data: { type: job.type, attempts, error: message.slice(0, 500) },
-        }),
-      ).catch((error) => {
-        jobLog.warn({ error: String(error) }, "dead-letter webhook enqueue failed");
-      });
-    } else {
-      const delay = backoffSeconds(attempts);
-      jobLog.warn(
-        { err: message, attempts, retryInSeconds: delay },
-        "job failed; scheduling retry",
-      );
-      // Flip back to queued and re-enqueue with backoff delay.
-      await withTenantTransaction(job.orgId, async () => {
-        await db
+      // Atomically claim the job. A queued job is new work; an expired running
+      // lease is recoverable work from a worker that crashed after claiming.
+      const now = new Date();
+      const claimToken = `${WORKER_ID}:claim:${randomUUID()}`;
+      const job = await withTenantTransaction(candidate.orgId, async () => {
+        const [claimed] = await db
           .update(schema.jobs)
-          .set({ status: "queued", dispatchedAt: null, leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null })
-          .where(and(eq(schema.jobs.id, job.id), eq(schema.jobs.status, "failed")));
+          .set({
+            status: "running",
+            startedAt: now,
+            finishedAt: null,
+            durationMs: null,
+            heartbeatAt: now,
+            // A fresh token per claim acts as a fencing token. Reusing the process
+            // id would let an older invocation from this process commit after a
+            // later invocation reclaimed the same job.
+            leaseOwner: claimToken,
+            leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
+            attempts: sql`${schema.jobs.attempts} + 1`,
+          })
+          .where(
+            and(
+              eq(schema.jobs.id, jobId),
+              or(
+                eq(schema.jobs.status, "queued"),
+                and(
+                  eq(schema.jobs.status, "running"),
+                  or(
+                    isNull(schema.jobs.leaseExpiresAt),
+                    lt(schema.jobs.leaseExpiresAt, now),
+                  ),
+                ),
+              ),
+            ),
+          )
+          .returning();
+        if (!claimed) return null;
+
+        // Claim state and attempt evidence must commit together. If the attempt
+        // insert fails, the queued/running transition is rolled back as well.
+        await db
+          .update(schema.jobAttempts)
+          .set({
+            status: "lease_lost",
+            finishedAt: now,
+            error: "Lease expired and a later claim fenced this attempt",
+          })
+          .where(
+            and(
+              eq(schema.jobAttempts.jobId, claimed.id),
+              eq(schema.jobAttempts.status, "running"),
+            ),
+          );
+        await db.insert(schema.jobAttempts).values({
+          jobId: claimed.id,
+          orgId: claimed.orgId,
+          attempt: claimed.attempts,
+          workerId: claimToken,
+          traceId: claimed.traceId,
+        });
+        return claimed;
       });
-      await dispatchJob(job.id, delay);
-    }
-  } finally {
-    clearInterval(heartbeat);
-  }
-  });
+      if (!job) {
+        log.info({ jobId }, "job not claimable (already running or finished)");
+        return;
+      }
+      const attempt = job.attempts;
+      const jobLog = log.child({
+        jobId,
+        type: job.type,
+        attempt,
+        workerId: WORKER_ID,
+      });
+      const started = Date.now();
+      const heartbeat = setInterval(() => {
+        void withTenantTransaction(job.orgId, () =>
+          db
+            .update(schema.jobs)
+            .set({
+              heartbeatAt: new Date(),
+              leaseExpiresAt: new Date(Date.now() + LEASE_MS),
+            })
+            .where(
+              and(
+                eq(schema.jobs.id, job.id),
+                eq(schema.jobs.status, "running"),
+                eq(schema.jobs.leaseOwner, claimToken),
+              ),
+            ),
+        ).catch((error) =>
+          jobLog.warn({ error: String(error) }, "job heartbeat failed"),
+        );
+      }, HEARTBEAT_MS);
+
+      try {
+        const reservedUsd = demoReservationUsd(job.payload);
+        await withTenantTransaction(job.orgId, async () => {
+          await HANDLERS[job.type](job);
+          const [completed] = await db
+            .update(schema.jobs)
+            .set({
+              status: "succeeded",
+              finishedAt: new Date(),
+              durationMs: Date.now() - started,
+              lastError: null,
+              leaseOwner: null,
+              leaseExpiresAt: null,
+              heartbeatAt: new Date(),
+            })
+            .where(
+              and(
+                eq(schema.jobs.id, job.id),
+                eq(schema.jobs.status, "running"),
+                eq(schema.jobs.leaseOwner, claimToken),
+              ),
+            )
+            .returning({ id: schema.jobs.id });
+          if (!completed) throw new LostJobLeaseError();
+          await db
+            .update(schema.jobAttempts)
+            .set({
+              status: "succeeded",
+              finishedAt: new Date(),
+              durationMs: Date.now() - started,
+            })
+            .where(
+              and(
+                eq(schema.jobAttempts.jobId, job.id),
+                eq(schema.jobAttempts.attempt, attempt),
+                eq(schema.jobAttempts.workerId, claimToken),
+              ),
+            );
+        });
+        if (reservedUsd) {
+          await reconcileDemoGeneration({
+            orgId: job.orgId,
+            reservedUsd,
+          }).catch((error) => {
+            jobLog.warn(
+              { error: String(error) },
+              "demo spend reservation reconciliation failed",
+            );
+          });
+        }
+        jobLog.info({ durationMs: Date.now() - started }, "job succeeded");
+      } catch (err) {
+        if (err instanceof LostJobLeaseError) {
+          await withTenantTransaction(job.orgId, () =>
+            db
+              .update(schema.jobAttempts)
+              .set({
+                status: "lease_lost",
+                finishedAt: new Date(),
+                durationMs: Date.now() - started,
+                error: err.message,
+              })
+              .where(
+                and(
+                  eq(schema.jobAttempts.jobId, job.id),
+                  eq(schema.jobAttempts.attempt, attempt),
+                  eq(schema.jobAttempts.workerId, claimToken),
+                ),
+              ),
+          );
+          jobLog.warn("job lease was reclaimed; rolled back handler writes");
+          return;
+        }
+
+        const attempts = job.attempts;
+        const message = err instanceof Error ? err.message : String(err);
+        const exhausted = attempts >= job.maxAttempts;
+
+        try {
+          await withTenantTransaction(job.orgId, async () => {
+            const [failed] = await db
+              .update(schema.jobs)
+              .set({
+                status: exhausted ? "dead_letter" : "failed",
+                attempts,
+                finishedAt: new Date(),
+                durationMs: Date.now() - started,
+                lastError: message,
+                leaseOwner: null,
+                leaseExpiresAt: null,
+                heartbeatAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(schema.jobs.id, job.id),
+                  eq(schema.jobs.status, "running"),
+                  eq(schema.jobs.leaseOwner, claimToken),
+                ),
+              )
+              .returning({ id: schema.jobs.id });
+            if (!failed) throw new LostJobLeaseError();
+            if (err instanceof DocumentIngestionError) {
+              await markDocumentIngestionFailed(err);
+            }
+            await db
+              .update(schema.jobAttempts)
+              .set({
+                status: exhausted ? "dead_letter" : "failed",
+                finishedAt: new Date(),
+                durationMs: Date.now() - started,
+                error: message,
+              })
+              .where(
+                and(
+                  eq(schema.jobAttempts.jobId, job.id),
+                  eq(schema.jobAttempts.attempt, attempt),
+                  eq(schema.jobAttempts.workerId, claimToken),
+                ),
+              );
+          });
+        } catch (transitionError) {
+          if (!(transitionError instanceof LostJobLeaseError))
+            throw transitionError;
+          await withTenantTransaction(job.orgId, () =>
+            db
+              .update(schema.jobAttempts)
+              .set({
+                status: "lease_lost",
+                finishedAt: new Date(),
+                durationMs: Date.now() - started,
+                error: transitionError.message,
+              })
+              .where(
+                and(
+                  eq(schema.jobAttempts.jobId, job.id),
+                  eq(schema.jobAttempts.attempt, attempt),
+                  eq(schema.jobAttempts.workerId, claimToken),
+                ),
+              ),
+          );
+          jobLog.warn(
+            "job lease was reclaimed before failure state could commit",
+          );
+          return;
+        }
+
+        if (exhausted) {
+          const reservedUsd = demoReservationUsd(job.payload);
+          if (reservedUsd) {
+            await reconcileDemoGeneration({
+              orgId: job.orgId,
+              reservedUsd,
+            }).catch((error) => {
+              jobLog.warn(
+                { error: String(error) },
+                "demo spend reservation release failed",
+              );
+            });
+          }
+          jobLog.error(
+            { err: message, attempts },
+            "job exhausted retries; dead-lettered",
+          );
+          await withTenantTransaction(job.orgId, () =>
+            recordAudit({
+              orgId: job.orgId,
+              action: "job.dead_letter",
+              subjectType: "job",
+              subjectId: job.id,
+              projectId: job.projectId,
+              metadata: { type: job.type, attempts, error: message },
+            }),
+          );
+          // Notify configured integrations after the dead-letter state and audit
+          // row are durable. Delivery itself is another durable job, so a
+          // transient webhook outage cannot change the worker outcome.
+          await withTenantTransaction(job.orgId, () =>
+            queueWebhookEvent({
+              orgId: job.orgId,
+              actorId: job.requestedBy ?? undefined,
+              subjectId: job.id,
+              type: "job.dead_letter",
+              data: { type: job.type, attempts, error: message.slice(0, 500) },
+            }),
+          ).catch((error) => {
+            jobLog.warn(
+              { error: String(error) },
+              "dead-letter webhook enqueue failed",
+            );
+          });
+        } else {
+          const delay = backoffSeconds(attempts);
+          jobLog.warn(
+            { err: message, attempts, retryInSeconds: delay },
+            "job failed; scheduling retry",
+          );
+          // Flip back to queued and re-enqueue with backoff delay.
+          await withTenantTransaction(job.orgId, async () => {
+            await db
+              .update(schema.jobs)
+              .set({
+                status: "queued",
+                dispatchedAt: null,
+                leaseOwner: null,
+                leaseExpiresAt: null,
+                heartbeatAt: null,
+              })
+              .where(
+                and(
+                  eq(schema.jobs.id, job.id),
+                  eq(schema.jobs.status, "failed"),
+                ),
+              );
+          });
+          await dispatchJob(job.id, delay);
+        }
+      } finally {
+        clearInterval(heartbeat);
+      }
+    },
+  );
 }
 
 let shuttingDown = false;
 
 async function main() {
+  await ensureWorkerTelemetry();
   log.info("worker started; polling for jobs");
   process.on("SIGINT", () => (shuttingDown = true));
   process.on("SIGTERM", () => (shuttingDown = true));

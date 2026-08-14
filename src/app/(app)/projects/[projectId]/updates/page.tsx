@@ -70,7 +70,7 @@ export default async function UpdatesPage({
                 </h2>
                 <div className="flex items-center gap-2">
                   {internal && <StatusBadge status={u.status} />}
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-gray-500">
                     {(u.publishedAt ?? u.createdAt).toLocaleDateString("en-US", {
                       month: "long",
                       day: "numeric",

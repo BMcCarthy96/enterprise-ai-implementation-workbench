@@ -64,6 +64,21 @@ export async function withTenantTransaction<T>(
   userId?: string,
 ): Promise<T> {
   return withSpan("tenant.transaction", { "workbench.org_present": Boolean(orgId), "workbench.user_present": Boolean(userId) }, async () => {
+    const active = tenantStorage.getStore();
+    if (active) {
+      if (active.orgId && active.orgId !== orgId) {
+        throw new Error("Cannot switch organizations inside an active tenant transaction");
+      }
+      if (!active.orgId) await setTenantContext(orgId);
+      if (userId) {
+        if (active.userId && active.userId !== userId) {
+          throw new Error("Cannot switch users inside an active tenant transaction");
+        }
+        if (!active.userId) await setContextValue("app.user_id", userId);
+      }
+      return callback();
+    }
+
     const afterCommit: Array<() => Promise<void>> = [];
     const result = await baseDb.transaction(async (tx) => {
       return tenantStorage.run({ tx, afterCommit }, async () => {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TourManifest, TourProgress } from "@/lib/tour";
 import type { Role } from "@/lib/auth/rbac";
 
@@ -47,6 +47,10 @@ export function AppShell({
   const [switchingRole, setSwitchingRole] = useState<Role | null>(null);
   const [resetPrompt, setResetPrompt] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const resetDialogRef = useRef<HTMLDialogElement>(null);
+  const resetReturnFocusRef = useRef<HTMLElement | null>(null);
+  const tourOpenRef = useRef<HTMLButtonElement>(null);
+  const restoreTourFocusRef = useRef(false);
   const [progress, setProgress] = useState<TourProgress>({
     version: manifest.version,
     completedStepIds: manifest.steps.filter((step) => step.complete).map((step) => step.id),
@@ -103,15 +107,36 @@ export function AppShell({
   }, [hydrated, manifest.steps, pathname]);
 
   useEffect(() => {
-    if (!open && !resetPrompt) return;
+    if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (resetPrompt) setResetPrompt(false);
-      else setOpen(false);
+      restoreTourFocusRef.current = true;
+      setOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, resetPrompt]);
+  }, [open]);
+
+  useEffect(() => {
+    if (open || !restoreTourFocusRef.current) return;
+    restoreTourFocusRef.current = false;
+    const frame = window.requestAnimationFrame(() => tourOpenRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
+
+  useEffect(() => {
+    const dialog = resetDialogRef.current;
+    if (!dialog) return;
+    if (resetPrompt && !dialog.open) {
+      dialog.showModal();
+      return;
+    }
+    if (!resetPrompt && dialog.open) {
+      dialog.close();
+      resetReturnFocusRef.current?.focus();
+      resetReturnFocusRef.current = null;
+    }
+  }, [resetPrompt]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -176,7 +201,13 @@ export function AppShell({
   }
 
   function resetDemo() {
+    resetReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setResetPrompt(true);
+  }
+
+  function minimizeTour() {
+    restoreTourFocusRef.current = true;
+    setOpen(false);
   }
 
   async function switchRole(targetRole: Role) {
@@ -202,8 +233,8 @@ export function AppShell({
   return (
     <>
       {manifest.isDemo && manifest.demoPersonas && (
-        <div className="sticky top-0 z-30 border-b border-cyan-200 bg-white/95 px-4 py-2 shadow-sm backdrop-blur" data-testid="demo-role-bar">
-          <div className="mx-auto flex max-w-[calc(100vw-2rem)] items-center gap-3 overflow-x-auto lg:ml-60 lg:max-w-none lg:px-4">
+        <div className={`relative z-20 border-b border-cyan-200 bg-white/95 px-4 py-2 shadow-sm backdrop-blur transition-[margin] duration-300 motion-reduce:transition-none lg:sticky lg:top-0 lg:z-30 lg:ml-60 ${open ? "2xl:mr-[23rem]" : ""}`} data-testid="demo-role-bar">
+          <div className="mx-auto flex max-w-[calc(100vw-2rem)] items-center gap-3 overflow-x-auto lg:max-w-none lg:px-4">
             <div className="shrink-0 pr-2"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-700">Demo personas</p><p className="text-xs text-slate-500">One-click RBAC view</p></div>
             <div className="flex min-w-0 gap-2" role="group" aria-label="Switch demo persona">
               {manifest.demoPersonas.map((persona) => (
@@ -223,17 +254,17 @@ export function AppShell({
                 </button>
               ))}
             </div>
-            <span className="ml-auto hidden shrink-0 text-[11px] text-slate-500 lg:block" aria-live="polite">{switchingRole ? "Refreshing permissions…" : "Synthetic isolated workspace"}</span>
+            <span className="pointer-events-none ml-auto hidden shrink-0 text-[11px] text-slate-500 2xl:block" aria-live="polite">{switchingRole ? "Refreshing permissions…" : "Synthetic isolated workspace"}</span>
           </div>
         </div>
       )}
-      <div className={`min-h-screen transition-[margin] duration-300 motion-reduce:transition-none ${open ? "lg:mr-[23rem]" : ""}`}>
+      <div className={`min-h-screen transition-[margin] duration-300 motion-reduce:transition-none ${open ? "2xl:mr-[23rem]" : ""}`}>
         {children}
       </div>
 
       {manifest.steps.length > 0 && (
         <>
-          {open && <button aria-label="Close product tour overlay" className="fixed inset-0 z-40 bg-slate-950/30 lg:hidden" onClick={() => setOpen(false)} />}
+          {open && <button aria-label={manifest.isDemo ? "Close Recruiter Mode overlay" : "Close product tour overlay"} className="fixed inset-0 z-40 bg-slate-950/30 2xl:hidden" onClick={minimizeTour} />}
           <aside
             aria-label={manifest.isDemo ? "Recruiter Mode" : "Product tour"}
             aria-hidden={!open}
@@ -248,7 +279,7 @@ export function AppShell({
                   <h2 className="mt-1 text-lg font-semibold">{manifest.isDemo ? "Tell the implementation story" : "See the workflow"}</h2>
                   <p className="mt-1 text-xs leading-5 text-slate-300">{manifest.isDemo ? "A guided path through delivery, governance, AI proof, and operations." : "A role-aware checklist with one useful next action at each stop."}</p>
                 </div>
-                <button type="button" onClick={() => setOpen(false)} className="rounded-md p-1 text-slate-300 hover:bg-white/10 hover:text-white" aria-label="Minimize product tour">×</button>
+                <button type="button" onClick={minimizeTour} className="rounded-md p-1 text-slate-300 hover:bg-white/10 hover:text-white" aria-label={manifest.isDemo ? "Minimize Recruiter Mode" : "Minimize product tour"}>×</button>
               </div>
               <div className="mt-4">
                 <div className="flex items-center justify-between text-[11px] text-slate-300"><span>{completed.size} of {manifest.steps.length} steps</span><span>{completionPercent}%</span></div>
@@ -290,31 +321,54 @@ export function AppShell({
             </div>
           </aside>
 
-          {!open && (
-            <button type="button" onClick={() => setOpen(true)} data-testid="tour-open" className={`fixed ${demoQuota ? "bottom-20" : "bottom-4"} right-4 z-40 inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-lg transition hover:border-cyan-300 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2`}>
+        </>
+      )}
+
+      {((manifest.steps.length > 0 && !open) || demoQuota) && (
+        <div className={`pointer-events-none fixed bottom-4 left-4 right-4 z-40 flex flex-col items-end gap-3 transition-[right] duration-300 motion-reduce:transition-none sm:left-auto ${open ? "2xl:right-[24rem]" : "sm:right-4"}`}>
+          {manifest.steps.length > 0 && !open && (
+            <button ref={tourOpenRef} type="button" onClick={() => setOpen(true)} data-testid="tour-open" className="pointer-events-auto inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-lg transition hover:border-cyan-300 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2">
               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-100 text-xs text-cyan-700">{completionPercent === 100 ? "✓" : "→"}</span>
               {manifest.isDemo ? "Recruiter Mode" : "Product tour"}
             </button>
           )}
-        </>
-      )}
-
-      {demoQuota && (
-        <div className={`fixed bottom-4 left-4 right-4 z-30 max-w-sm rounded-lg border border-cyan-200 bg-slate-950 px-4 py-3 text-xs text-white shadow-xl transition-[right] duration-300 motion-reduce:transition-none sm:left-auto ${open ? "lg:right-[24rem]" : "sm:right-4"}`}>
-          <div className="flex items-start justify-between gap-4"><div><p className="font-semibold text-cyan-300">Isolated interactive demo</p><p className="mt-1 text-slate-300">Synthetic workspace · expires {new Date(demoQuota.expiresAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</p></div><button type="button" onClick={resetDemo} disabled={resetting} className="text-[11px] font-semibold text-cyan-200 underline decoration-cyan-400/40 underline-offset-2 hover:text-white">{resetting ? "Resetting…" : "Reset"}</button></div>
-          <p className="mt-1 text-slate-400">{demoQuota.generations.limit - demoQuota.generations.used} AI generations left · {demoQuota.uploads.limit - demoQuota.uploads.used} uploads left · {quotaBytes(demoQuota.storageBytes.used)} / {quotaBytes(demoQuota.storageBytes.limit)}</p>
+          {demoQuota && (
+            <details data-testid="demo-quota" className="group pointer-events-auto w-full max-w-sm overflow-hidden rounded-lg border border-cyan-200 bg-slate-950 text-xs text-white shadow-xl">
+              <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 px-4 py-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300">
+                <span>
+                  <span className="block font-semibold text-cyan-300">Isolated demo</span>
+                  <span className="mt-0.5 block text-slate-300">{demoQuota.generations.limit - demoQuota.generations.used} AI generations · {demoQuota.uploads.limit - demoQuota.uploads.used} uploads left</span>
+                </span>
+                <span className="shrink-0 font-semibold text-cyan-200 group-open:hidden">Details</span>
+                <span className="hidden shrink-0 font-semibold text-cyan-200 group-open:inline">Hide</span>
+              </summary>
+              <div className="border-t border-white/10 px-4 py-3">
+                <p className="text-slate-300">Synthetic workspace · expires {new Date(demoQuota.expiresAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</p>
+                <div className="mt-1 flex items-center justify-between gap-4 text-slate-400">
+                  <span>{quotaBytes(demoQuota.storageBytes.used)} / {quotaBytes(demoQuota.storageBytes.limit)} storage</span>
+                  <button type="button" onClick={resetDemo} disabled={resetting} className="font-semibold text-cyan-200 underline decoration-cyan-400/40 underline-offset-2 hover:text-white">{resetting ? "Resetting…" : "Reset demo"}</button>
+                </div>
+              </div>
+            </details>
+          )}
         </div>
       )}
 
-      {resetPrompt && <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/45 p-4" role="presentation">
-        <div role="dialog" aria-modal="true" aria-labelledby="reset-demo-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+      <dialog
+        ref={resetDialogRef}
+        aria-labelledby="reset-demo-title"
+        className="m-auto w-[calc(100vw_-_2rem)] max-w-md rounded-2xl bg-white p-5 text-left shadow-2xl backdrop:bg-slate-950/45"
+        onCancel={(event) => {
+          event.preventDefault();
+          setResetPrompt(false);
+        }}
+      >
           <h2 id="reset-demo-title" className="text-base font-semibold text-slate-950">Reset isolated demo?</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">Your current walkthrough state and generated work will be replaced with the seeded scenario.</p>
           <div className="mt-5 flex justify-end gap-2"><button type="button" autoFocus className="btn-secondary" onClick={() => setResetPrompt(false)}>Keep workspace</button><button type="button" className="btn-primary bg-rose-600 hover:bg-rose-700" onClick={() => void performReset()}>Reset demo</button></div>
-        </div>
-      </div>}
+      </dialog>
 
-      {errorMessage && <div className="fixed bottom-4 left-4 z-[80] max-w-sm rounded-xl border border-rose-200 bg-white px-4 py-3 text-sm text-rose-800 shadow-xl" role="alert"><div className="flex items-start gap-3"><span>{errorMessage}</span><button type="button" aria-label="Dismiss notification" className="min-h-8 min-w-8 rounded-md text-lg leading-none hover:bg-rose-50" onClick={() => setErrorMessage(null)}>×</button></div></div>}
+      {errorMessage && <div className="fixed left-4 right-4 top-20 z-[80] max-w-sm rounded-xl border border-rose-200 bg-white px-4 py-3 text-sm text-rose-800 shadow-xl sm:right-auto" role="alert"><div className="flex items-start gap-3"><span>{errorMessage}</span><button type="button" aria-label="Dismiss notification" className="min-h-8 min-w-8 rounded-md text-lg leading-none hover:bg-rose-50" onClick={() => setErrorMessage(null)}>×</button></div></div>}
     </>
   );
 }

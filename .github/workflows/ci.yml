@@ -45,20 +45,6 @@ jobs:
       - run: npm run eval:check
       - name: Validate proof registry
         run: npm run proof:check
-      - name: Build proof bundle with CI provenance
-        run: npm run proof:bundle
-        env:
-          PROOF_EVIDENCE_SHA: ${{ github.sha }}
-          PROOF_EVIDENCE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          PROOF_EVIDENCE_COMMAND: npm run lint && npm run typecheck && npm test && npm run build
-          PROOF_EVIDENCE_VERIFIED_AT: ${{ github.event.head_commit.timestamp || github.run_started_at }}
-      - name: Upload recruiter evidence bundle
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: recruiter-proof-bundle
-          path: artifacts/proof-bundle/
-          retention-days: 14
       - name: Upload offline evidence scorecard
         if: always()
         uses: actions/upload-artifact@v4
@@ -143,3 +129,35 @@ jobs:
             playwright-report/
             worker.log
           retention-days: 7
+
+  proof-bundle:
+    name: Publish commit-bound recruiter proof
+    needs: [quality, e2e]
+    if: ${{ needs.quality.result == 'success' && needs.e2e.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Capture verification timestamp
+        id: provenance
+        run: echo "verified_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+      - name: Validate provenance and build proof bundle
+        run: |
+          npm run proof:check
+          npm run proof:bundle
+        env:
+          PROOF_EVIDENCE_SHA: ${{ github.sha }}
+          PROOF_EVIDENCE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PROOF_EVIDENCE_COMMAND: Required jobs - quality and Playwright e2e
+          PROOF_EVIDENCE_VERIFIED_AT: ${{ steps.provenance.outputs.verified_at }}
+          PROOF_EVIDENCE_CONCLUSION: success
+      - name: Upload recruiter evidence bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: recruiter-proof-bundle-${{ github.sha }}
+          path: artifacts/proof-bundle/
+          retention-days: 30

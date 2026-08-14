@@ -24,12 +24,52 @@ const TYPE_BADGE: Record<SearchResultType, { letter: string; className: string }
 };
 
 const MIN_CHARS = 2;
+const OPEN_SEARCH_EVENT = "workbench:open-search";
 
 /** ⌘ on Apple platforms, Ctrl elsewhere. SSR renders the Ctrl form; the client
  *  reconciles (suppressed) so there is no hydration warning. */
 function shortcutHint(): string {
   if (typeof navigator === "undefined") return "Ctrl K";
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? "⌘K" : "Ctrl K";
+}
+
+export function SearchPaletteTrigger({
+  variant = "sidebar",
+  onOpen,
+}: {
+  variant?: "sidebar" | "mobile";
+  onOpen?: () => void;
+}) {
+  const mobile = variant === "mobile";
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        onOpen?.();
+        window.dispatchEvent(new Event(OPEN_SEARCH_EVENT));
+      }}
+      className={
+        mobile
+          ? "flex min-h-11 w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:border-cyan-300 hover:text-slate-950"
+          : "flex w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-400 transition-colors hover:border-white/20 hover:bg-white/10"
+      }
+      aria-label="Open search"
+    >
+      <SearchIcon />
+      <span className="flex-1 text-left">Search…</span>
+      <kbd
+        suppressHydrationWarning
+        className={
+          mobile
+            ? "rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500"
+            : "rounded border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-slate-400"
+        }
+      >
+        {shortcutHint()}
+      </kbd>
+    </button>
+  );
 }
 
 export function SearchPalette() {
@@ -50,7 +90,7 @@ export function SearchPalette() {
     setActive(0);
   }, []);
 
-  // Global shortcut: ⌘K / Ctrl+K toggles the palette from anywhere.
+  // Global shortcut and responsive triggers share this single palette instance.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -58,8 +98,15 @@ export function SearchPalette() {
         setOpen((v) => !v);
       }
     }
+    function onOpen() {
+      setOpen(true);
+    }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(OPEN_SEARCH_EVENT, onOpen);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(OPEN_SEARCH_EVENT, onOpen);
+    };
   }, []);
 
   // Focus the input and lock body scroll while open.
@@ -148,22 +195,6 @@ export function SearchPalette() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-400 transition-colors hover:border-white/20 hover:bg-white/10"
-        aria-label="Open search"
-      >
-        <SearchIcon />
-        <span className="flex-1 text-left">Search…</span>
-        <kbd
-          suppressHydrationWarning
-          className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-slate-400"
-        >
-          {shortcutHint()}
-        </kbd>
-      </button>
-
       {open && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center bg-gray-900/30 px-4 pt-[12vh]"
@@ -185,30 +216,30 @@ export function SearchPalette() {
                 onKeyDown={onInputKeyDown}
                 placeholder="Search projects, requirements, customers…"
                 aria-label="Search query"
-                className="w-full bg-transparent py-3.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none"
+                className="w-full bg-transparent py-3.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none"
               />
-              <kbd className="hidden rounded border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-400 sm:block">
+              <kbd className="hidden rounded border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-500 sm:block">
                 Esc
               </kbd>
             </div>
 
             <div className="max-h-80 overflow-y-auto py-2">
               {query.trim().length < MIN_CHARS ? (
-                <p className="px-4 py-6 text-center text-sm text-gray-400">
+                <p className="px-4 py-6 text-center text-sm text-gray-500">
                   Type at least {MIN_CHARS} characters to search.
                 </p>
               ) : loading && results.length === 0 ? (
-                <p className="px-4 py-6 text-center text-sm text-gray-400">
+                <p className="px-4 py-6 text-center text-sm text-gray-500">
                   Searching…
                 </p>
               ) : grouped.length === 0 && searched ? (
-                <p className="px-4 py-6 text-center text-sm text-gray-400">
+                <p className="px-4 py-6 text-center text-sm text-gray-500">
                   No matches for “{query.trim()}”.
                 </p>
               ) : (
                 grouped.map((group) => (
                   <div key={group.type} className="mb-1">
-                    <p className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                    <p className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                       {GROUP_LABEL[group.type]}
                     </p>
                     {group.items.map((item) => {
@@ -256,7 +287,7 @@ export function SearchPalette() {
 function SearchIcon() {
   return (
     <svg
-      className="h-4 w-4 shrink-0 text-gray-400"
+      className="h-4 w-4 shrink-0 text-gray-500"
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"

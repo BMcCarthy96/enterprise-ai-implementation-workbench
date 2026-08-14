@@ -411,6 +411,13 @@ async function main() {
     sourceRef: "S1",
     chunkId: sourceChunk.id,
     location: "brightlane-order-intake-brief.md · Implementation brief",
+    retrieverVersion: "hybrid-v1",
+    queryHash: createHash("sha256").update(buildPlanUserPrompt(planInput)).digest("hex"),
+    rank: 1,
+    vectorScore: "0.93000000",
+    lexicalScore: "0.87000000",
+    selectionReason: "Top hybrid match for the order-intake workflow and exception-handling requirements.",
+    redactedExcerpt: sourceText,
   });
   const seedEvaluations = buildPlanEvaluationRows(
     {
@@ -494,7 +501,7 @@ async function main() {
       type: "customer_update_digest",
       status: "succeeded",
       attempts: 1,
-      requestedBy: manager,
+      requestedBy: engineer,
       startedAt: daysAgo(7),
       finishedAt: daysAgo(7, 0.01),
       durationMs: 1830,
@@ -517,7 +524,7 @@ async function main() {
       status: "published",
       generatedByJobId: digestJob.id,
       publishedAt: daysAgo(6),
-      createdBy: manager,
+      createdBy: engineer,
       createdAt: daysAgo(7),
     })
     .returning();
@@ -528,7 +535,7 @@ async function main() {
     subjectType: "customer_update",
     subjectId: update.id,
     status: "approved",
-    requestedBy: manager,
+    requestedBy: engineer,
     decidedBy: manager,
     decidedAt: daysAgo(6),
     note: "Accurate and appropriately framed for the blocked item.",
@@ -614,7 +621,7 @@ async function main() {
       type: "plan_generation",
       status: "succeeded",
       attempts: 1,
-      requestedBy: manager,
+      requestedBy: engineer,
       startedAt: daysAgo(2),
       finishedAt: daysAgo(2, 0.01),
       durationMs: 2100,
@@ -634,6 +641,7 @@ async function main() {
       model: "mock",
       promptVersion: PROMPT_VERSION,
       generatedByJobId: claimsJob.id,
+      createdBy: engineer,
       createdAt: daysAgo(2),
     })
     .returning();
@@ -644,7 +652,7 @@ async function main() {
     subjectType: "plan",
     subjectId: claimsPlan.id,
     status: "pending",
-    requestedBy: manager,
+    requestedBy: engineer,
     createdAt: daysAgo(2),
   });
 
@@ -682,7 +690,7 @@ async function main() {
         title: u.title,
         body: u.body,
         status: "pending_approval",
-        createdBy: manager,
+        createdBy: engineer,
         createdAt: hoursAgo(4 + i),
       })
       .returning();
@@ -692,7 +700,7 @@ async function main() {
       subjectType: "customer_update",
       subjectId: row.id,
       status: "pending",
-      requestedBy: manager,
+      requestedBy: engineer,
       createdAt: hoursAgo(4 + i),
     });
   }

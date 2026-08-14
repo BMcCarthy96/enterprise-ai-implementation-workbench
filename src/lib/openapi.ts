@@ -8,8 +8,10 @@ import {
   CreateTaskSchema,
   PresignDocumentSchema,
   RegisterDocumentSchema,
+  RetentionPolicySchema,
   UpdateProjectSchema,
   UpdateRequirementSchema,
+  UpdateRetentionPolicySchema,
   UpdateSlaPolicySchema,
   UpdateTaskSchema,
 } from "@/lib/apiSchemas";
@@ -609,12 +611,7 @@ export function buildOpenApiDocument() {
         put: {
           tags: ["Security"],
           summary: "Update bounded organization retention windows",
-          requestBody: body(z.object({
-            auditDays: z.number().int().optional(),
-            aiDetailDays: z.number().int().optional(),
-            completedJobDays: z.number().int().optional(),
-            webhookDeliveryDays: z.number().int().optional(),
-          })),
+          requestBody: body(UpdateRetentionPolicySchema),
           responses: { "200": jsonResponse("{ policy }"), ...STD },
         },
       },
@@ -622,6 +619,12 @@ export function buildOpenApiDocument() {
         get: {
           tags: ["Security"],
           summary: "Preview records selected by the current retention policy",
+          responses: { "200": jsonResponse("{ policy, cutoffs, counts }"), ...STD },
+        },
+        post: {
+          tags: ["Security"],
+          summary: "Preview records selected by an unsaved retention-policy draft",
+          requestBody: body(RetentionPolicySchema),
           responses: { "200": jsonResponse("{ policy, cutoffs, counts }"), ...STD },
         },
       },

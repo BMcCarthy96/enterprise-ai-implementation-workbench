@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { REJECTION_REASONS as REASONS } from "./reasons";
 
@@ -20,6 +20,8 @@ export function ApprovalActions({
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const idempotencyKey = useRef<string | null>(null);
+  const reasonId = useId();
+  const noteId = useId();
 
   async function decide(decision: "approved" | "rejected") {
     setBusy(true);
@@ -92,8 +94,9 @@ export function ApprovalActions({
   return (
     <div className="space-y-2 rounded-md border border-red-100 bg-red-50/50 p-3">
       <div>
-        <label className="label">Rejection reason</label>
+        <label className="label" htmlFor={reasonId}>Rejection reason</label>
         <select
+          id={reasonId}
           className="input"
           value={reasonCode}
           onChange={(e) => setReasonCode(e.target.value)}
@@ -106,8 +109,9 @@ export function ApprovalActions({
         </select>
       </div>
       <div>
-        <label className="label">Note (optional)</label>
+        <label className="label" htmlFor={noteId}>Note (optional)</label>
         <textarea
+          id={noteId}
           className="input"
           rows={2}
           value={note}
@@ -125,7 +129,7 @@ export function ApprovalActions({
           />
           <span>
             Automatically generate a revised plan
-            <span className="block text-xs text-gray-400">
+            <span className="block text-xs text-gray-500">
               Feeds this reason and note into a new version for review.
             </span>
           </span>

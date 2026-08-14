@@ -7,6 +7,7 @@ import {
   buildPlanUserPrompt,
   buildDigestUserPrompt,
 } from "@/lib/ai/prompts";
+import { redactSensitiveText } from "@/lib/ai/redaction";
 
 const planInput = {
   projectName: "Test Project",
@@ -45,6 +46,31 @@ describe("MockProvider", () => {
         `requirement "${req.title}" should map to a task`,
       ).toBe(true);
     }
+  });
+
+  it("preserves UUID requirement links through the redacted prompt path", async () => {
+    const requirementIds = [
+      "36984598-0309-4bc9-9fc7-573b4096aa91",
+      "d45f24e3-5aee-4ece-99c8-278247993ec0",
+    ];
+    const user = redactSensitiveText(
+      buildPlanUserPrompt({
+        ...planInput,
+        requirements: planInput.requirements.map((requirement, index) => ({
+          ...requirement,
+          id: requirementIds[index],
+        })),
+      }),
+    ).text;
+    const provider = new MockProvider();
+    const result = await provider.complete({ system: PLAN_SYSTEM_PROMPT, user });
+    const plan = PlanContentSchema.parse(JSON.parse(result.text));
+    const linkedIds = new Set(
+      plan.milestones.flatMap((milestone) =>
+        milestone.tasks.flatMap((task) => task.requirementIds ?? []),
+      ),
+    );
+    expect(linkedIds).toEqual(new Set(requirementIds));
   });
 
   it("produces a digest with title and body", async () => {

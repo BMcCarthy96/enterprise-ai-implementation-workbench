@@ -131,7 +131,7 @@ export default async function ApprovalsPage() {
                         </span>
                       )}
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-500">
                       Requested{" "}
                       {approval.createdAt.toLocaleDateString("en-US", {
                         month: "short",
@@ -177,7 +177,7 @@ export default async function ApprovalsPage() {
                     subjectType={approval.subjectType}
                   />
                 ) : (
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-500">
                     Awaiting a decision from an implementation manager.
                   </p>
                 )}
@@ -208,7 +208,7 @@ export default async function ApprovalsPage() {
                       : "Customer update"}
                     {projectName && ` · ${projectName}`}
                   </p>
-                  <p className="truncate text-xs text-gray-400">
+                  <p className="truncate text-xs text-gray-500">
                     {deciderName ?? "—"}
                     {approval.reasonCode && ` · ${approval.reasonCode.replace(/_/g, " ")}`}
                     {approval.note && ` · "${approval.note}"`}

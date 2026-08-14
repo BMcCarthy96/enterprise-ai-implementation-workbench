@@ -46,7 +46,7 @@ export function TaskCard({
         {task.title}
       </p>
       {task.milestoneName && (
-        <p className="mt-1 truncate text-xs text-gray-400">
+        <p className="mt-1 truncate text-xs text-gray-500">
           {task.milestoneName}
         </p>
       )}

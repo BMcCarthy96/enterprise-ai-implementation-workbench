@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { LogoutButton } from "@/components/LogoutButton";
+import { SearchPaletteTrigger } from "@/components/SearchPalette";
 import type { NavItem } from "./layout";
 
 export function MobileNav({ groups, orgName, userName }: { groups: Array<{ label: string; items: NavItem[] }>; orgName: string; userName: string }) {
@@ -27,7 +29,13 @@ export function MobileNav({ groups, orgName, userName }: { groups: Array<{ label
       </div>
       {open && <nav id="mobile-navigation" aria-label="Mobile main navigation" className="mt-3 max-h-[70vh] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
         {groups.map((group) => <div key={group.label} className="mb-3 last:mb-0"><p className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{group.label}</p>{group.items.map((item) => { const active = pathname === item.href || pathname.startsWith(item.href + "/"); return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)} className={`block min-h-11 rounded-lg px-3 py-2.5 text-sm font-medium ${active ? "bg-cyan-100 text-cyan-950" : "text-slate-700 hover:bg-white"}`}>{item.label}</Link>; })}</div>)}
-        <p className="border-t border-slate-200 px-3 pt-3 text-xs text-slate-500">Signed in as <span className="font-medium text-slate-700">{userName}</span></p>
+        <div className="mt-3 space-y-2 border-t border-slate-200 px-1 pt-3">
+          <SearchPaletteTrigger variant="mobile" onOpen={() => setOpen(false)} />
+          <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg px-2 text-xs text-slate-500">
+            <span className="min-w-0">Signed in as <span className="font-medium text-slate-700">{userName}</span></span>
+            <LogoutButton className="shrink-0 rounded-md px-2 py-2 font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60" />
+          </div>
+        </div>
       </nav>}
     </div>
   );
