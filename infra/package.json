@@ -11,7 +11,7 @@
     "constructs": "^10.4.2"
   },
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/node": "^26",
     "aws-cdk": "^2.240.0",
     "cdk-nag": "^3.0.2",
     "ts-node": "^10.9.2",
