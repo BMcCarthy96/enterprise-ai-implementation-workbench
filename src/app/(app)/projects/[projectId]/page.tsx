@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { SlaPolicyOverride } from "@/lib/sla";
+import { TOUR_TARGETS } from "@/lib/tour";
 import { SlaPolicyForm } from "./SlaPolicyForm";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ export default async function ProjectOverviewPage({
   const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
+    <div className="grid scroll-mt-28 gap-6 lg:grid-cols-3" data-tour-target={TOUR_TARGETS.projectOverview} aria-label="Project overview">
       <div className="space-y-6 lg:col-span-2">
         <div className="card p-5">
           <h2 className="mb-2 text-sm font-semibold text-gray-900">

@@ -6,6 +6,7 @@ import { can } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { uuidParam } from "@/server/services/access";
+import { TOUR_TARGETS } from "@/lib/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -81,7 +82,10 @@ export default async function AuditPage({
       {events.length === 0 ? (
         <EmptyState title="No audit events match this filter" />
       ) : (
-        <div className="card overflow-x-auto">
+        <div
+          className="card scroll-mt-28 overflow-x-auto"
+          data-tour-target={TOUR_TARGETS.auditLog}
+        >
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>

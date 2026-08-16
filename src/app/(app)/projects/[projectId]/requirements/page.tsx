@@ -6,6 +6,7 @@ import { can } from "@/lib/auth/rbac";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { RequirementForm } from "./RequirementForm";
+import { TOUR_TARGETS } from "@/lib/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export default async function RequirementsPage({
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
+    <div className="grid scroll-mt-28 gap-6 lg:grid-cols-3" data-tour-target={TOUR_TARGETS.projectRequirements} aria-label="Project requirements">
       <div className="lg:col-span-2">
         {rows.length === 0 ? (
           <EmptyState

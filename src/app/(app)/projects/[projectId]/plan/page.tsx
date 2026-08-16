@@ -9,6 +9,7 @@ import { diffPlans } from "@/lib/ai/planDiff";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { JobRunnerButton } from "@/components/JobRunnerButton";
+import { TOUR_TARGETS } from "@/lib/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -61,26 +62,30 @@ export default async function PlanPage({
   const latest = plans[0];
 
   const generateButton = canGenerate ? (
-    <JobRunnerButton
-      endpoint={`/api/v1/projects/${projectId}/plans/generate`}
-      label={latest ? "Regenerate plan" : "Generate implementation plan"}
-      busyLabel="Generating plan..."
-    />
+    <div className="scroll-mt-28" data-tour-target={TOUR_TARGETS.projectPlanGenerate}>
+      <JobRunnerButton
+        endpoint={`/api/v1/projects/${projectId}/plans/generate`}
+        label={latest ? "Regenerate plan" : "Generate implementation plan"}
+        busyLabel="Generating plan..."
+      />
+    </div>
   ) : null;
 
   if (!latest) {
     return (
-      <EmptyState
-        title="No implementation plan yet"
-        hint="Generate one from the captured requirements. The plan is drafted by AI, then reviewed and approved by an implementation manager before any tasks are created."
-      >
-        {generateButton}
-        {trace && (
-          <Link href={`/ai-runs/${trace.id}`} className="btn-secondary">
-            Inspect AI evidence packet
-          </Link>
-        )}
-      </EmptyState>
+      <div className="scroll-mt-28" data-tour-target={TOUR_TARGETS.projectPlan} aria-label="Implementation plan">
+        <EmptyState
+          title="No implementation plan yet"
+          hint="Generate one from the captured requirements. The plan is drafted by AI, then reviewed and approved by an implementation manager before any tasks are created."
+        >
+          {generateButton}
+          {trace && (
+            <Link href={`/ai-runs/${trace.id}`} className="btn-secondary">
+              Inspect AI evidence packet
+            </Link>
+          )}
+        </EmptyState>
+      </div>
     );
   }
 
@@ -96,7 +101,7 @@ export default async function PlanPage({
       : null;
 
   return (
-    <div>
+    <div className="scroll-mt-28" data-tour-target={TOUR_TARGETS.projectPlan} aria-label="Implementation plan">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-base font-semibold text-gray-900">
@@ -277,7 +282,7 @@ export default async function PlanPage({
       )}
 
       {citations.length > 0 && (
-        <div className="mt-6 card p-5">
+        <div className="mt-6 card scroll-mt-28 p-5" data-tour-target={TOUR_TARGETS.projectPlanCitations}>
           <h3 className="text-sm font-semibold text-gray-900">Grounding sources</h3>
           <p className="mt-1 text-xs text-gray-500">The model was given these project-scoped excerpts; source refs are validated before approval.</p>
           <ul className="mt-3 grid gap-2 sm:grid-cols-2">

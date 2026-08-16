@@ -4,7 +4,7 @@ import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { StatusBadge } from "@/components/StatusBadge";
-import { ProjectTabs } from "./ProjectTabs";
+import { ProjectBreadcrumb, ProjectTabs } from "./ProjectTabs";
 import { uuidParam } from "@/server/services/access";
 
 export default async function ProjectLayout({
@@ -62,7 +62,8 @@ export default async function ProjectLayout({
       ];
 
   return (
-    <div>
+    <div data-testid="project-shell">
+      <ProjectBreadcrumb projectName={project.name} tabs={tabs} />
       <div className="mb-1 flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold text-gray-900">{project.name}</h1>
         <StatusBadge status={project.status} />

@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { EmptyState } from "@/components/EmptyState";
 import { TaskCard } from "./TaskCard";
+import { TOUR_TARGETS } from "@/lib/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -48,15 +49,17 @@ export default async function BoardPage({
 
   if (tasks.length === 0) {
     return (
-      <EmptyState
-        title="No tasks on the board"
-        hint="Tasks appear here after an implementation plan is approved, or can be added manually."
-      />
+      <div className="scroll-mt-28" data-tour-target={TOUR_TARGETS.projectBoard} aria-label="Delivery board">
+        <EmptyState
+          title="No tasks on the board"
+          hint="Tasks appear here after an implementation plan is approved, or can be added manually."
+        />
+      </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-5">
+    <div className="grid scroll-mt-28 grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-5" data-tour-target={TOUR_TARGETS.projectBoard} aria-label="Delivery board">
       {COLUMNS.map((col) => {
         const colTasks = tasks.filter((t) => t.task.status === col.key);
         return (

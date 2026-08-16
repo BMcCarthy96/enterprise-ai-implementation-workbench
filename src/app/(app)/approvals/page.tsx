@@ -5,6 +5,7 @@ import { can } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
+import { entityTourTarget, TOUR_TARGETS } from "@/lib/tour";
 import { ApprovalActions } from "./ApprovalActions";
 import {
   ApprovalCheckbox,
@@ -91,6 +92,11 @@ export default async function ApprovalsPage() {
         subtitle="Human review checkpoint for AI-generated plans and customer communications"
       />
 
+      <section
+        className="scroll-mt-28"
+        data-tour-target={TOUR_TARGETS.approvalsQueue}
+        aria-label="Approval queue"
+      >
       {pending.length === 0 ? (
         <EmptyState
           title="Nothing waiting for review"
@@ -104,7 +110,11 @@ export default async function ApprovalsPage() {
             const plan = plans.find((p) => p.id === approval.subjectId);
             const update = updates.find((u) => u.id === approval.subjectId);
             return (
-              <div key={approval.id} className="card p-5">
+              <div
+                key={approval.id}
+                className="card scroll-mt-28 p-5"
+                data-tour-target={entityTourTarget("approval", approval.id)}
+              >
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-start gap-3">
                     {canDecide && (
@@ -187,6 +197,7 @@ export default async function ApprovalsPage() {
           </div>
         </BulkSelectionProvider>
       )}
+      </section>
 
       {recentDecisions.length > 0 && (
         <div className="card mt-8">

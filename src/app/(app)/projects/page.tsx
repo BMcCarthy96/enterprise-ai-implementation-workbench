@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { NewProjectButton } from "./NewProjectButton";
+import { TOUR_TARGETS } from "@/lib/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +80,7 @@ export default async function ProjectsPage({
       ) : filteredRows.length === 0 ? (
         <EmptyState title="No projects match those filters" hint="Clear a filter or broaden the search to see the organization portfolio." />
       ) : (
-        <div className="card overflow-x-auto">
+        <div className="card scroll-mt-28 overflow-x-auto" data-tour-target={TOUR_TARGETS.projectsList}>
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>

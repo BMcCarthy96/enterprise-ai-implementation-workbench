@@ -3,23 +3,13 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export function LoginForm({ passwordLoginEnabled = true }: { passwordLoginEnabled?: boolean }) {
+export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  if (!passwordLoginEnabled) {
-    return (
-      <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950">
-        <p className="font-semibold">Password sign-in is disabled for this public showcase.</p>
-        <p className="mt-1 text-xs leading-5 text-cyan-900/80">Use the isolated synthetic demo from the landing page. Each workspace expires automatically and has bounded quotas.</p>
-        <a href="/demo" className="btn-primary mt-3 w-full">Launch isolated demo</a>
-      </div>
-    );
-  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

@@ -4,6 +4,7 @@ import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can, ROLE_LABELS, type Role } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
+import { TOUR_TARGETS } from "@/lib/tour";
 import { SettingsNav } from "../SettingsNav";
 
 export const dynamic = "force-dynamic";
@@ -92,7 +93,10 @@ export default async function MembersPage() {
       />
       <SettingsNav active="/settings/members" />
 
-      <div className="card mb-6 overflow-x-auto">
+      <div
+        className="card mb-6 scroll-mt-28 overflow-x-auto"
+        data-tour-target={TOUR_TARGETS.membersAccess}
+      >
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

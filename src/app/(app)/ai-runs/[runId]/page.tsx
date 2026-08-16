@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { uuidParam } from "@/server/services/access";
 import { getAiEvidencePacket, summarizeEvidence } from "@/server/services/aiEvidence";
+import { TOUR_TARGETS } from "@/lib/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,10 @@ export default async function AiRunDetailPage({
         <div className="grid gap-5 lg:grid-cols-[1.35fr_0.85fr]">
           <div className="space-y-5">
             <section className="card p-5">
-              <div className="flex items-start justify-between gap-4">
+              <div
+                className="flex scroll-mt-28 items-start justify-between gap-4"
+                data-tour-target={TOUR_TARGETS.aiEvidenceFlow}
+              >
                 <div>
                   <h2 className="text-sm font-semibold text-gray-900">Evidence chain</h2>
                   <p className="mt-1 text-xs text-gray-500">Retrieval → model call → validation/repair → artifact → human decision</p>

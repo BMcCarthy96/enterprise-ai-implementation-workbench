@@ -11,10 +11,16 @@ const pause = (milliseconds: number) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function switchDemoRole(page: Page, role: string) {
+  const coachmark = page.getByTestId("tour-coachmark");
+  if (await coachmark.isVisible().catch(() => false)) {
+    await coachmark
+      .getByRole("button", { name: "Exit guided walkthrough" })
+      .click();
+  }
   const panel = page.getByTestId("recruiter-mode-panel");
   if ((await panel.getAttribute("aria-hidden")) === "false") {
     await panel
-      .getByRole("button", { name: "Minimize Recruiter Mode" })
+      .getByRole("button", { name: "Minimize guided walkthrough" })
       .click();
     await page.getByTestId("tour-open").waitFor({ state: "visible" });
   }
@@ -71,23 +77,23 @@ async function main() {
     }
     await page.waitForURL("**/dashboard");
     await page.locator("#portfolio-health-heading").waitFor();
-    await page
-      .getByTestId("recruiter-mode-panel")
-      .waitFor({ state: "visible" });
+    const coachmark = page.getByTestId("tour-coachmark");
+    await coachmark.waitFor({ state: "visible" });
+    await page.getByTestId("tour-spotlight").waitFor({ state: "visible" });
     await pause(3000);
-    await page.getByRole("button", { name: "Minimize Recruiter Mode" }).click();
-
-    await page.goto(`${baseUrl}/ai-runs`, { waitUntil: "networkidle" });
+    await coachmark.getByTestId("tour-coachmark-next").click();
+    await page.waitForURL("**/plan");
     await pause(2500);
-    await page
-      .getByRole("link", { name: /[0-9a-f]{8}/i })
-      .first()
-      .click();
+    await coachmark.getByTestId("tour-coachmark-next").click();
     await page.getByRole("heading", { name: "AI evidence packet" }).waitFor();
     await pause(3500);
-
-    await page.goto(`${baseUrl}/approvals`, { waitUntil: "networkidle" });
+    await coachmark.getByTestId("tour-coachmark-next").click();
+    await page.waitForURL("**/approvals");
     await pause(3000);
+    await coachmark.getByRole("button", { name: "All steps" }).click();
+    await page.getByTestId("recruiter-mode-panel").waitFor({ state: "visible" });
+    await pause(2000);
+    await page.getByRole("button", { name: "Minimize guided walkthrough" }).click();
 
     await switchDemoRole(page, "customer_stakeholder");
     await pause(2000);

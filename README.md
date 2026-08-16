@@ -19,7 +19,9 @@ The public journey has three entry points: **Start 90-second tour** for the
 short delivery story, **5-minute technical tour** for retrieval, role
 switching, and failure recovery, and **Explore self-guided demo** for the full
 isolated workspace. All three provision the same expiring synthetic boundary;
-the checkpoint only controls where Recruiter Mode opens.
+the checkpoint only controls where the guided walkthrough opens.
+The sign-in page also includes an **Open demo workspace** action, so a visitor
+can enter the sample workspace without an account or password.
 
 ## Who this is for
 
@@ -188,7 +190,7 @@ Sign in with any demo account (password `demo1234`):
 | `customer@brightlane.dev` | Customer Stakeholder |
 | `admin@cascade.dev` | Admin of a second tenant (isolation demo) |
 
-**Suggested demo:** use the landing page’s **Start 90-second tour** button. The isolated workspace opens Recruiter Mode once with a checklist that walks through the dashboard health view → grounded Order Intake plan → repaired AI trace → Claims approval → live Patient Onboarding generation → delivery materialization → dead-letter recovery → customer communication. Minimize/reopen the dock at any time, or use **Reset** to provision a fresh scenario. For persona-specific access, sign in as `engineer` → open *Patient Onboarding Portal* → Plan tab → *Generate implementation plan* (watch the job go queued → running on the Ops page) → sign in as `manager` → Approvals → review & approve → Delivery now has the materialized tasks → Communications → *Draft customer update* → approve it → sign in as `customer@brightlane.dev` to see exactly what an external stakeholder sees.
+**Suggested demo:** use the landing page’s **Start 90-second tour** button. The isolated workspace opens the guided walkthrough once with a checklist that moves through the dashboard health view → grounded Order Intake plan → repaired AI trace → Claims approval → live Patient Onboarding generation → delivery materialization → dead-letter recovery → customer communication. Minimize/reopen the dock at any time, or use **Reset** to provision a fresh scenario. For persona-specific access, sign in as `engineer` → open *Patient Onboarding Portal* → Plan tab → *Generate implementation plan* (watch the job go queued → running on the Ops page) → sign in as `manager` → Approvals → review & approve → Delivery now has the materialized tasks → Communications → *Draft customer update* → approve it → sign in as `customer@brightlane.dev` to see exactly what an external stakeholder sees.
 
 ## Global search
 

@@ -159,7 +159,7 @@ export async function getDashboardSnapshot(orgId: string, isInternal: boolean): 
     let nextActionHref = `/projects/${project.id}`;
     if (!latestPlan) {
       nextAction = "Generate implementation plan";
-      nextActionHref = `/projects/${project.id}/requirements`;
+      nextActionHref = `/projects/${project.id}/plan`;
     } else if (latestPlan.status === "pending_approval") {
       nextAction = "Review pending plan";
       nextActionHref = "/approvals";

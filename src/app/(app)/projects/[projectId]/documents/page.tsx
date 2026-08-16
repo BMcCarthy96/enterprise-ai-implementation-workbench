@@ -4,6 +4,7 @@ import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { DocumentList, DocumentUploader } from "./DocumentUploader";
+import { TOUR_TARGETS } from "@/lib/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export default async function DocumentsPage({
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
+    <div className="grid scroll-mt-28 gap-6 lg:grid-cols-3" data-tour-target={TOUR_TARGETS.projectDocuments} aria-label="Source documents">
       <div className="lg:col-span-2">
         <DocumentList
           documents={docs.map((d) => ({

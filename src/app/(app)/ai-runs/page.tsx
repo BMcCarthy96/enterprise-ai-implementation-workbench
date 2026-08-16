@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { summarizeEvidence } from "@/server/services/aiEvidence";
+import { TOUR_TARGETS } from "@/lib/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export default async function AiRunsPage({
     const passingRuns = runs.filter((run) => summaries.get(run.id)?.hardGatePassed === true).length;
     const repairRuns = runs.filter((run) => run.finalOutcome === "repaired").length;
     return (
-      <div>
+      <div className="scroll-mt-28" data-tour-target={TOUR_TARGETS.aiEvidenceList}>
         <PageHeader
           title="AI Evidence Center"
           subtitle="Trace model activity, normalized quality checks, grounding, artifacts, and human decisions."

@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { ProjectTimeline } from "@/components/ProjectTimeline";
 import { getProjectTimeline } from "@/server/services/timeline";
+import { TOUR_TARGETS } from "@/lib/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,7 @@ export default async function TimelinePage({
   const internal = can(session.role, "internal.view");
 
   return (
-    <div>
+    <div className="scroll-mt-28" data-tour-target={TOUR_TARGETS.projectTimeline} aria-label="Project timeline">
       <p className="mb-4 text-sm text-gray-500">
         {internal
           ? "The customer-facing view of delivery progress — published updates only, no internal review history."

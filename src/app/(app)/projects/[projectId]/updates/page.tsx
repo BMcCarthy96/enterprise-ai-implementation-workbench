@@ -5,6 +5,7 @@ import { can } from "@/lib/auth/rbac";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { JobRunnerButton } from "@/components/JobRunnerButton";
+import { TOUR_TARGETS, entityTourTarget } from "@/lib/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ export default async function UpdatesPage({
   );
 
   return (
-    <div>
+    <div className="scroll-mt-28" data-tour-target={TOUR_TARGETS.projectUpdates} aria-label="Project communications">
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-gray-500">
           {internal
@@ -63,7 +64,7 @@ export default async function UpdatesPage({
       ) : (
         <div className="space-y-4">
           {updates.map((u) => (
-            <article key={u.id} className="card p-5">
+            <article key={u.id} className="card scroll-mt-28 p-5" data-tour-target={entityTourTarget("update", u.id)}>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-gray-900">
                   {u.title}

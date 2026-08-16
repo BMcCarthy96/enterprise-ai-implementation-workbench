@@ -1,7 +1,7 @@
 import type { Role } from "@/lib/auth/rbac";
 
 /** Bump this when the product tour's information architecture changes. */
-export const TOUR_VERSION = "phase2-recruiter-2026-08";
+export const TOUR_VERSION = "phase3-coachmarks-2026-08";
 
 export interface DemoPersonaOption {
   role: Role;
@@ -10,10 +10,10 @@ export interface DemoPersonaOption {
 }
 
 export const DEMO_PERSONA_OPTIONS: Array<Pick<DemoPersonaOption, "role" | "label" | "focus">> = [
-  { role: "implementation_manager", label: "Implementation Manager", focus: "Owns delivery, approvals, and the recruiter walkthrough" },
-  { role: "solutions_engineer", label: "Solutions Engineer", focus: "Builds requirements, plans, documents, and tasks" },
-  { role: "customer_stakeholder", label: "Customer Stakeholder", focus: "Reads the customer-safe project story and updates" },
-  { role: "org_admin", label: "Operations Admin", focus: "Sees organization governance, audit, and operations" },
+  { role: "implementation_manager", label: "Implementation Manager", focus: "Reviews delivery work and makes approval decisions" },
+  { role: "solutions_engineer", label: "Solutions Engineer", focus: "Builds plans from the requirements and source documents" },
+  { role: "customer_stakeholder", label: "Customer Stakeholder", focus: "Checks progress and reads updates prepared for the customer" },
+  { role: "org_admin", label: "Operations Admin", focus: "Manages access and keeps an eye on jobs and audit history" },
 ];
 
 /** Stable references captured while provisioning an isolated demo workspace. */
@@ -43,6 +43,43 @@ export interface DemoScenarioRefs {
   };
 }
 
+export type TourPlacement = "top" | "right" | "bottom" | "left";
+
+export interface TourTarget {
+  /** Semantic DOM anchor id rendered through data-tour-target. */
+  id: string;
+  /** Stable surface-level anchor used when seeded data has changed. */
+  fallbackId?: string;
+  placement?: TourPlacement;
+}
+
+export const TOUR_TARGETS = {
+  dashboardPortfolio: "dashboard-portfolio-health",
+  dashboardDeliveryRisk: "dashboard-delivery-risk",
+  projectOverview: "project-overview",
+  projectRequirements: "project-requirements",
+  projectDocuments: "project-documents",
+  projectPlan: "project-plan",
+  projectPlanCitations: "project-plan-citations",
+  projectPlanGenerate: "project-plan-generate",
+  projectBoard: "project-delivery-board",
+  projectTimeline: "project-timeline",
+  projectUpdates: "project-updates",
+  aiEvidenceList: "ai-evidence-list",
+  aiEvidenceFlow: "ai-evidence-flow",
+  approvalsQueue: "approvals-queue",
+  membersAccess: "members-access",
+  auditLog: "audit-log",
+  operationsJobs: "operations-jobs",
+  projectsList: "projects-list",
+} as const;
+
+export type TourEntity = "approval" | "job" | "update";
+
+export function entityTourTarget(entity: TourEntity, id: string): string {
+  return `${entity}-${id}`;
+}
+
 export interface TourStep {
   id: string;
   title: string;
@@ -50,6 +87,7 @@ export interface TourStep {
   evidence: string;
   href: string;
   cta: string;
+  target: TourTarget;
   /** The server can mark workflow-dependent steps complete as data changes. */
   complete?: boolean;
 }
@@ -71,6 +109,55 @@ export interface TourProgress {
   autoOpened?: boolean;
 }
 
+export function sameTourPath(pathname: string, href: string): boolean {
+  const normalize = (value: string) =>
+    value.length > 1 ? value.replace(/\/$/, "") : value;
+  return normalize(pathname) === normalize(href);
+}
+
+export function checkpointTourStepId(checkpoint: string | null): string | null {
+  if (!checkpoint) return null;
+  const checkpoints: Record<string, string> = {
+    "portfolio-health": "portfolio-health",
+    "ai-evidence": "repaired-ai-trace",
+    "role-switching": "portfolio-health",
+    "dlq-recovery": "dead-letter-recovery",
+  };
+  return checkpoints[checkpoint] ?? null;
+}
+
+export function reconcileTourStepId(
+  steps: TourStep[],
+  pathname: string,
+): string | undefined {
+  return steps.find((candidate) => sameTourPath(pathname, candidate.href))?.id
+    ?? steps[0]?.id;
+}
+
+export function restartTourProgress(
+  version: string,
+  steps: TourStep[],
+): TourProgress {
+  return {
+    version,
+    completedStepIds: [],
+    autoOpened: true,
+    lastStepId: steps[0]?.id,
+  };
+}
+
+export function completeTourStep(
+  progress: TourProgress,
+  stepId: string,
+): TourProgress {
+  return {
+    ...progress,
+    completedStepIds: Array.from(
+      new Set([...progress.completedStepIds, stepId]),
+    ),
+  };
+}
+
 function step(
   id: string,
   title: string,
@@ -78,14 +165,24 @@ function step(
   evidence: string,
   href: string,
   cta: string,
+  target: TourTarget,
 ): TourStep {
-  return { id, title, purpose, evidence, href, cta };
+  return { id, title, purpose, evidence, href, cta, target };
+}
+
+function anchor(
+  id: string,
+  placement: TourPlacement = "bottom",
+  fallbackId?: string,
+): TourTarget {
+  return { id, placement, ...(fallbackId ? { fallbackId } : {}) };
 }
 
 /**
  * Pure role-aware tour definition. Keep every destination inside the normal
  * application navigation so the tour remains useful for authenticated tenants
- * and cannot introduce a route a persona cannot already reach.
+ * and cannot introduce a route a persona cannot already reach. Keep the copy
+ * short, conversational, and free of audience references or sales language.
  */
 export function buildRoleTourSteps(
   role: Role,
@@ -93,50 +190,50 @@ export function buildRoleTourSteps(
 ): TourStep[] {
   if (refs && role === "implementation_manager") {
     return [
-      step("portfolio-health", "Portfolio health", "Start with the delivery signal a recruiter can understand in seconds.", "Three active projects, a visible blocked-task risk, and a pending approval queue.", "/dashboard", "Review dashboard"),
-      step("grounded-plan", "Grounded implementation plan", "Show how requirements become an executable plan with source grounding.", "Order Intake Automation has an approved plan with a linked implementation brief citation.", `/projects/${refs.projectIds.orderIntake}/plan`, "Open grounded plan"),
-      step("repaired-ai-trace", "Repaired AI evidence", "Make quality observable instead of treating model output as a black box.", "The packet records an invalid first pass, a repair call, normalized checks, latency, cost, and approval context.", `/ai-runs/${refs.aiRunId}`, "Inspect AI evidence"),
-      step("claims-approval", "Human approval gate", "Demonstrate that delivery remains human-governed before work starts.", "Claims Status Tracker is waiting for manager approval before task materialization.", "/approvals", "Review approval queue"),
-      step("live-generation", "Live plan generation", "Turn a real requirement set into a plan during the conversation.", "Patient Onboarding Portal is intentionally seeded without a plan so generation is visible.", `/projects/${refs.projectIds.patientOnboarding}/requirements`, "Open requirements"),
-      step("generated-board", "Generated delivery board", "Close the loop from approved plan to assignable work.", "After approval, milestone tasks appear on the project board and become trackable.", `/projects/${refs.projectIds.patientOnboarding}/board`, "Open delivery board"),
-      step("dead-letter-recovery", "Dead-letter recovery", "Show the operational path when an automated job exhausts its retries.", "A customer-update job is parked with its retry history and a manual recovery action.", "/ops", "Open operations"),
-      step("customer-update", "Customer-ready update", "End with an approval-aware update that is safe to share externally.", "A published update and a pending UAT-readiness update make the communication gate visible.", `/projects/${refs.projectIds.orderIntake}/updates`, "View customer updates"),
+      step("portfolio-health", "Portfolio health", "Start on the dashboard. It shows what needs attention right now.", "There are three active projects. One has a blocked task, and two items are waiting for approval.", "/dashboard", "Review dashboard", anchor(TOUR_TARGETS.dashboardPortfolio, "bottom")),
+      step("grounded-plan", "Plan and source", "Open the approved plan and trace its work back to the source brief.", "The Order Intake plan includes a link to the brief that supports it.", `/projects/${refs.projectIds.orderIntake}/plan`, "Open the plan", anchor(TOUR_TARGETS.projectPlanCitations, "top", TOUR_TARGETS.projectPlan)),
+      step("repaired-ai-trace", "AI run details", "Open the run to see why the first response failed.", "The first response failed validation, then passed after one repair. Timing and cost are shown with the run.", `/ai-runs/${refs.aiRunId}`, "Open the AI run", anchor(TOUR_TARGETS.aiEvidenceFlow, "bottom", TOUR_TARGETS.aiEvidenceList)),
+      step("claims-approval", "Plan approval", "Open the request that is holding the Claims Status plan.", "A manager still needs to approve this plan. Its tasks appear on the board after that decision.", "/approvals", "Open the approval", anchor(entityTourTarget("approval", refs.approvalIds.pendingPlan), "top", TOUR_TARGETS.approvalsQueue)),
+      step("live-generation", "Generate a plan", "Create a plan from the Patient Onboarding requirements.", "This project starts with requirements and no plan. Use the button on this page to create one.", `/projects/${refs.projectIds.patientOnboarding}/plan`, "Generate the plan", anchor(TOUR_TARGETS.projectPlanGenerate, "bottom", TOUR_TARGETS.projectPlan)),
+      step("generated-board", "New board tasks", "Open the board after the plan has been approved.", "The plan adds its milestone tasks to this board. Each task can be assigned and tracked here.", `/projects/${refs.projectIds.patientOnboarding}/board`, "Open the board", anchor(TOUR_TARGETS.projectBoard, "top")),
+      step("dead-letter-recovery", "Failed job recovery", "Open the customer update job that stopped after three tries.", "Its history is on the same row as the retry button.", "/ops", "Open the failed job", anchor(entityTourTarget("job", refs.jobIds.deadLetter), "left", TOUR_TARGETS.operationsJobs)),
+      step("customer-update", "Customer update", "Open the update that a customer can read.", "One update has been published. The UAT update is still waiting for approval.", `/projects/${refs.projectIds.orderIntake}/updates`, "Open the update", anchor(entityTourTarget("update", refs.updateIds.published), "top", TOUR_TARGETS.projectUpdates)),
     ];
   }
 
   switch (role) {
     case "org_admin":
       return [
-        step("portfolio-health", "Portfolio health", "See the organization-wide delivery posture.", "KPI context, risk signals, and project stages are summarized without invented trends.", "/dashboard", "Review dashboard"),
-        step("members", "Team access", "Verify who can act on delivery data.", "Role labels and least-privilege membership controls are visible.", "/settings/members", "Review members"),
-        step("audit", "Audit trail", "Prove important changes are attributable.", "Actor, action, subject, and timestamp are available for review.", "/audit", "Open audit log"),
-        step("operations", "Operations", "Close the loop on background work.", "Failed and dead-letter jobs can be inspected and recovered.", "/ops", "Open operations"),
+        step("portfolio-health", "Portfolio health", "Start with the work that may need attention.", "The dashboard shows project status and current risks. It uses the data available in this workspace.", "/dashboard", "Open the dashboard", anchor(TOUR_TARGETS.dashboardPortfolio, "bottom")),
+        step("members", "Team access", "Open the member list and check who can use the workspace.", "Each person has a role that controls what they can see and change.", "/settings/members", "Open the member list", anchor(TOUR_TARGETS.membersAccess, "bottom")),
+        step("audit", "Audit history", "Open the history for a recent change.", "Each entry names the person or service that made the change. It also shows when it happened.", "/audit", "Open the audit history", anchor(TOUR_TARGETS.auditLog, "top")),
+        step("operations", "Background jobs", "Check what happened to a failed job.", "You can read its attempts and start a retry from this page.", "/ops", "Open the jobs page", anchor(TOUR_TARGETS.operationsJobs, "top")),
       ];
     case "implementation_manager":
       return [
-        step("portfolio-health", "Delivery risk", "Prioritize the work that needs attention.", "Blocked work, target dates, and approval aging are visible together.", "/dashboard", "Review dashboard"),
-        step("approvals", "Approval queue", "Keep human decisions in the delivery loop.", "Pending plans and customer updates have clear next actions.", "/approvals", "Review approvals"),
-        step("ai-quality", "AI evidence", "Make model behavior reviewable.", "Validity, repair rescue, latency, cost, and normalized checks are measurable.", "/ai-runs", "Inspect AI evidence"),
-        step("audit", "Audit trail", "Trace who changed what and when.", "Delivery and governance events are searchable by subject.", "/audit", "Open audit log"),
-        step("operations", "Operations", "Recover safely from failed automation.", "Retry and dead-letter states are visible to the delivery owner.", "/ops", "Open operations"),
+        step("portfolio-health", "Delivery risk", "Start with the projects that need attention.", "The dashboard shows a blocked task and work nearing its target date. It also shows how long approvals have been waiting.", "/dashboard", "Open the dashboard", anchor(TOUR_TARGETS.dashboardDeliveryRisk, "right", TOUR_TARGETS.dashboardPortfolio)),
+        step("approvals", "Approval queue", "Open the next decision waiting for you.", "Plans and customer updates stay here until someone reviews them.", "/approvals", "Open the approvals", anchor(TOUR_TARGETS.approvalsQueue, "top")),
+        step("ai-quality", "AI runs", "Open a recent run and check how it behaved.", "You can see whether it passed validation. Timing and recorded cost are shown with the run.", "/ai-runs", "Open the AI runs", anchor(TOUR_TARGETS.aiEvidenceList, "bottom")),
+        step("audit", "Audit history", "Look up a recent change.", "Search by project or person to see who made it and when.", "/audit", "Open the audit history", anchor(TOUR_TARGETS.auditLog, "top")),
+        step("operations", "Failed jobs", "Open a failed job and review its attempts.", "If the job can be retried, the action is available on the same page.", "/ops", "Open the jobs page", anchor(TOUR_TARGETS.operationsJobs, "top")),
       ];
     case "solutions_engineer": {
       const projectId = refs?.projectIds.patientOnboarding;
       return [
-        step("requirements", "Requirements", "Start from validated business needs.", "Requirement status and priority provide the implementation boundary.", projectId ? `/projects/${projectId}/requirements` : "/projects", "Review requirements"),
-        step("documents", "Source documents", "Keep implementation work grounded in evidence.", "Uploaded briefs and processed document chunks can be traced to plan citations.", refs ? `/projects/${refs.projectIds.orderIntake}/documents` : "/projects", "Open source documents"),
-        step("plan-generation", "Plan generation", "Turn requirements into structured delivery work.", "Plans are schema-validated before they enter the approval workflow.", projectId ? `/projects/${projectId}/plan` : "/projects", "Open plan workspace"),
-        step("task-board", "Task board", "Make the plan executable for the build team.", "Milestones, owners, priority, and blocked status are visible in one board.", projectId ? `/projects/${projectId}/board` : "/projects", "Open task board"),
-        step("job-status", "Job status", "Know what automation is doing in the background.", "Queued, retrying, succeeded, and dead-letter jobs have operational context.", "/ops", "Open job status"),
+        step("requirements", "Requirements", "Read the requirements before you build the plan.", "Each requirement shows its priority and current status.", projectId ? `/projects/${projectId}/requirements` : "/projects", "Open the requirements", anchor(projectId ? TOUR_TARGETS.projectRequirements : TOUR_TARGETS.projectsList, "right")),
+        step("documents", "Source documents", "Open the brief that the plan uses as a source.", "The document is processed into sections that the plan can cite.", refs ? `/projects/${refs.projectIds.orderIntake}/documents` : "/projects", "Open the source document", anchor(refs ? TOUR_TARGETS.projectDocuments : TOUR_TARGETS.projectsList, "right")),
+        step("plan-generation", "Generate a plan", "Create a plan from the project requirements.", "The system checks the plan format before sending it for approval.", projectId ? `/projects/${projectId}/plan` : "/projects", "Generate the plan", anchor(projectId ? TOUR_TARGETS.projectPlanGenerate : TOUR_TARGETS.projectsList, "bottom", projectId ? TOUR_TARGETS.projectPlan : undefined)),
+        step("task-board", "Task board", "Open the board where the team tracks the work.", "Each card shows its owner and status. Blocked work stands out on the board.", projectId ? `/projects/${projectId}/board` : "/projects", "Open the task board", anchor(projectId ? TOUR_TARGETS.projectBoard : TOUR_TARGETS.projectsList, "top")),
+        step("job-status", "Job status", "Check the job that runs plan generation in the background.", "The page shows its current state. It keeps the attempt history if something fails.", "/ops", "Open the job status", anchor(TOUR_TARGETS.operationsJobs, "top")),
       ];
     }
     case "customer_stakeholder": {
       const projectId = refs?.projectIds.orderIntake;
       const base = projectId ? `/projects/${projectId}` : "/projects";
       return [
-        step("project-overview", "Project overview", "Get the current implementation context.", "Scope, customer, stage, and next milestone are presented in plain language.", base, "Open project overview"),
-        step("timeline", "Timeline", "Understand progress without internal implementation noise.", "Milestones and recent delivery events are sequenced by date.", projectId ? `${base}/timeline` : "/projects", "View timeline"),
-        step("updates", "Published updates", "Read the latest customer-safe status.", "Only approved and published updates are exposed to the customer role.", projectId ? `${base}/updates` : "/projects", "View updates"),
+        step("project-overview", "Project overview", "Start with the project page.", "It shows the current scope and stage. The next milestone appears below them.", base, "Open the project", anchor(projectId ? TOUR_TARGETS.projectOverview : TOUR_TARGETS.projectsList, "right")),
+        step("timeline", "Timeline", "Open the timeline to see what has happened so far.", "Milestones and recent updates appear in date order.", projectId ? `${base}/timeline` : "/projects", "Open the timeline", anchor(projectId ? TOUR_TARGETS.projectTimeline : TOUR_TARGETS.projectsList, "right")),
+        step("updates", "Published updates", "Read the latest update shared with the customer.", "This page only shows updates that have already been approved and published.", projectId ? `${base}/updates` : "/projects", "Open the updates", anchor(projectId ? TOUR_TARGETS.projectUpdates : TOUR_TARGETS.projectsList, "top")),
       ];
     }
   }

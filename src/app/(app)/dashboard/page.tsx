@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { DeliveryRiskPanel } from "@/components/DeliveryRiskPanel";
 import { RiskBadge } from "@/components/RiskBadge";
 import { getDashboardSnapshot, type DashboardKpi, type DashboardProjectHealth } from "@/server/services/dashboard";
+import { TOUR_TARGETS } from "@/lib/tour";
 
 export const dynamic = "force-dynamic";
 
@@ -96,11 +97,11 @@ export default async function DashboardPage() {
         ))}
       </section>
 
-      {isInternal && <DeliveryRiskPanel {...snapshot.delivery} />}
+      {isInternal && <div data-tour-target={TOUR_TARGETS.dashboardDeliveryRisk}><DeliveryRiskPanel {...snapshot.delivery} /></div>}
 
       <div className="grid gap-6 xl:grid-cols-5">
         <section className="card overflow-hidden xl:col-span-3" aria-labelledby="portfolio-health-heading">
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3"><div><h2 id="portfolio-health-heading" className="text-sm font-semibold text-slate-950">Portfolio health</h2><p className="mt-0.5 text-xs text-slate-500">Progress, stage, target, and next action for every project.</p></div><Link href="/projects" className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">View all <span aria-hidden>→</span></Link></div>
+          <div className="flex scroll-mt-28 items-center justify-between border-b border-slate-100 px-4 py-3" data-tour-target={TOUR_TARGETS.dashboardPortfolio}><div><h2 id="portfolio-health-heading" className="text-sm font-semibold text-slate-950">Portfolio health</h2><p className="mt-0.5 text-xs text-slate-500">Progress, stage, target, and next action for every project.</p></div><Link href="/projects" className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">View all <span aria-hidden>→</span></Link></div>
           <ul>{snapshot.projects.slice(0, 6).map((project) => <ProjectHealthRow key={project.id} project={project} />)}{snapshot.projects.length === 0 && <li className="px-4 py-10 text-center text-sm text-slate-500">No projects yet. Create a project to see portfolio health.</li>}</ul>
         </section>
 

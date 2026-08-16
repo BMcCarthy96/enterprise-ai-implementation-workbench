@@ -50,4 +50,31 @@ test.describe("authenticated accessibility gates", () => {
     const serious = results.violations.filter((violation) => ["critical", "serious"].includes(violation.impact ?? ""));
     expect(serious, serious.map((violation) => violation.id + ": " + violation.help).join("\n")).toEqual([]);
   });
+
+  test("guided walkthrough passes axe and keyboard checks", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
+    await page.waitForURL("**/dashboard");
+
+    const coachmark = page.getByTestId("tour-coachmark");
+    await expect(coachmark).toBeVisible();
+    await expect(coachmark).toBeFocused();
+    let results = await new AxeBuilder({ page }).analyze();
+    let serious = results.violations.filter((violation) => ["critical", "serious"].includes(violation.impact ?? ""));
+    expect(serious, serious.map((violation) => violation.id + ": " + violation.help).join("\n")).toEqual([]);
+
+    await page.keyboard.press("Tab");
+    await expect(coachmark.getByRole("button", { name: "Exit guided walkthrough" })).toBeFocused();
+    await coachmark.getByRole("button", { name: "All steps" }).click();
+    const panel = page.getByTestId("recruiter-mode-panel");
+    await expect(panel).toHaveAttribute("aria-hidden", "false");
+    await expect(panel.getByRole("button", { name: "Minimize guided walkthrough" })).toBeFocused();
+    results = await new AxeBuilder({ page }).analyze();
+    serious = results.violations.filter((violation) => ["critical", "serious"].includes(violation.impact ?? ""));
+    expect(serious, serious.map((violation) => violation.id + ": " + violation.help).join("\n")).toEqual([]);
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("tour-open")).toBeFocused();
+  });
 });

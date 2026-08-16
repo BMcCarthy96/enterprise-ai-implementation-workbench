@@ -6,6 +6,7 @@ import { can } from "@/lib/auth/rbac";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
+import { entityTourTarget, TOUR_TARGETS } from "@/lib/tour";
 import { RetryJobButton } from "./RetryJobButton";
 
 export const dynamic = "force-dynamic";
@@ -136,6 +137,11 @@ export default async function OpsPage() {
         </div>
       </section>
 
+      <section
+        className="scroll-mt-28"
+        data-tour-target={TOUR_TARGETS.operationsJobs}
+        aria-label="Background jobs"
+      >
       {jobs.length === 0 ? (
         <EmptyState
           title="No jobs yet"
@@ -206,7 +212,10 @@ export default async function OpsPage() {
                       </span>
                     )}
                   </td>
-                  <td className="table-td">
+                  <td
+                    className="table-td scroll-mt-28"
+                    data-tour-target={entityTourTarget("job", job.id)}
+                  >
                     {canRetry &&
                       (job.status === "failed" ||
                         job.status === "dead_letter") && (
@@ -219,6 +228,7 @@ export default async function OpsPage() {
           </table>
         </div>
       )}
+      </section>
     </div>
   );
 }

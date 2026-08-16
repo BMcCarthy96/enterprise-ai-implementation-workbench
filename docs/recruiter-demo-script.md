@@ -32,7 +32,7 @@ npm run dev
 npm run worker
 ```
 
-Capture at 1440×900 with reduced motion enabled. Use the landing page’s **Start 90-second tour** action; the capture scripts provision the same isolated public flow and do not use the shared local seed credentials. Recruiter Mode opens once and can be minimized or restarted from its docked control. Use the persistent persona bar for the manager → customer → admin proof, and use **Reset** when you need a fresh scenario. Never record a real customer file or a long-lived credential.
+Capture at 1440×900 with reduced motion enabled. Use the landing page’s **Start 90-second tour** action; the capture scripts provision the same isolated public flow and do not use the shared local seed credentials. The guided walkthrough opens once and can be minimized or restarted from its docked control. Use the persistent persona bar for the manager → customer → admin proof, and use **Reset** when you need a fresh scenario. Never record a real customer file or a long-lived credential.
 
 For a repeatable silent capture, start the app and run:
 

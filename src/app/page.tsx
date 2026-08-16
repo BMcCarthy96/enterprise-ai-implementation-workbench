@@ -25,9 +25,9 @@ export default function Home() {
 
         <section className="grid items-center gap-12 pb-20 pt-20 lg:grid-cols-[1.05fr_0.95fr] lg:pb-28 lg:pt-28">
           <div>
-            <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300" /> Recruiter-ready AI systems portfolio</p>
-            <h1 className="max-w-3xl text-5xl font-semibold leading-[1.02] tracking-[-0.04em] text-white sm:text-6xl">AI that drafts delivery work. Humans who stay in control.</h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">The Workbench turns messy implementation requirements into grounded, schema-validated plans with retrieval citations, repair traces, cost telemetry, and an explicit approval gate before anything reaches execution.</p>
+            <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300" /> Interactive demo</p>
+            <h1 className="max-w-3xl text-5xl font-semibold leading-[1.02] tracking-[-0.04em] text-white sm:text-6xl">Turn project requirements into a plan you can review.</h1>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">The Workbench drafts an implementation plan from the project requirements. You can trace the plan back to its source and review what the model did. Tasks are created after someone approves the plan.</p>
             <div className="mt-8 flex flex-wrap items-start gap-4"><DemoLaunchButton /><Link href="/demo?checkpoint=portfolio-health" className="btn-ghost">Explore self-guided demo</Link></div>
             <p className="mt-4 text-xs text-slate-400"><Link href="/demo?checkpoint=ai-evidence" className="text-cyan-200 hover:text-white">Take the 5-minute technical tour ↗</Link> <span className="mx-2 text-slate-600">·</span> <Link href="/login" className="text-slate-300 hover:text-white">Sign in to an existing workspace</Link></p>
             <p className="mt-4 text-xs text-slate-400">The demo uses synthetic data, creates an isolated 60-minute workspace, and never shares credentials between visitors.</p>

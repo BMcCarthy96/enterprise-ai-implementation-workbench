@@ -9,23 +9,76 @@ async function login(page: Page, email: string) {
   await page.waitForURL("**/dashboard");
 }
 
-async function minimizeRecruiterMode(page: Page) {
+async function closeRecruiterGuide(page: Page) {
+  const coachmark = page.getByTestId("tour-coachmark");
+  await coachmark.waitFor({ state: "visible", timeout: 5_000 }).catch(() => undefined);
+  if (await coachmark.isVisible().catch(() => false)) {
+    await coachmark
+      .getByRole("button", { name: "Exit guided walkthrough" })
+      .click();
+    await expect(page.getByTestId("tour-open")).toBeVisible();
+    return;
+  }
   const panel = page.getByTestId("recruiter-mode-panel");
-  await expect(panel).toHaveAttribute("aria-hidden", "false");
-  await panel
-    .getByRole("button", { name: "Minimize Recruiter Mode" })
-    .click();
+  if ((await panel.getAttribute("aria-hidden")) === "false") {
+    await panel
+      .getByRole("button", { name: "Minimize guided walkthrough" })
+      .click();
+  }
   await expect(panel).toHaveAttribute("aria-hidden", "true");
   await expect(page.getByTestId("tour-open")).toBeVisible();
 }
 
-test.describe("interactive recruiter demo", () => {
+async function expectNoInternalOverflow(page: Page, testId: string) {
+  expect(
+    await page.getByTestId(testId).evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+  ).toBe(true);
+}
+
+async function walkCoachmarks(page: Page, titles: string[]) {
+  const coachmark = page.getByTestId("tour-coachmark");
+  for (const [index, title] of titles.entries()) {
+    await expect(
+      coachmark.getByRole("heading", { name: title, exact: true }),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("tour-spotlight")).toBeVisible();
+    await expect(
+      coachmark.getByRole("heading", { name: "This item is no longer here" }),
+    ).toHaveCount(0);
+    await coachmark.getByTestId("tour-coachmark-next").click();
+    if (index === titles.length - 1) {
+      await expect(page.getByTestId("tour-open")).toBeVisible();
+    }
+  }
+}
+
+test.describe("interactive guided demo", () => {
+  test("opens a demo from the sign-in page without credentials", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByText("Interactive demo", { exact: true })).toBeVisible();
+    await expect(page.getByText(/recruiter-ready/i)).toHaveCount(0);
+
+    await page.goto("/login");
+    await expect(page.getByRole("heading", { name: "Try the interactive demo" })).toBeVisible();
+    await expect(page.getByText("No account or password is needed.", { exact: false })).toBeVisible();
+
+    const launch = page.waitForResponse("**/api/demo/session");
+    await page.getByRole("button", { name: "Open demo workspace" }).click();
+    await expect((await launch).ok()).toBe(true);
+    await page.waitForURL("**/dashboard");
+    await expect(page.getByTestId("demo-role-bar")).toBeVisible();
+  });
+
   test("launches with delivery, governance, AI, and operations evidence", async ({
     page,
   }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
+    await expect(page.getByTestId("tour-coachmark")).toBeVisible();
+    await closeRecruiterGuide(page);
 
     await expect(page.getByRole("link", { name: "3 Active projects" })).toBeVisible();
     await expect(page.getByRole("link", { name: "2 Pending approvals" })).toBeVisible();
@@ -47,15 +100,18 @@ test.describe("interactive recruiter demo", () => {
     await expect(page.getByText("Evidence retention boundary")).toBeVisible();
   });
 
-  test("opens once, minimizes, resumes, and persists recruiter mode progress", async ({ page }) => {
+  test("opens once, advances explicitly, and saves walkthrough progress", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
 
-    const panel = page.getByTestId("recruiter-mode-panel");
-    await expect(panel).toBeVisible();
-    await expect(panel.getByText("Tell the implementation story")).toBeVisible();
-    await panel.getByRole("button", { name: "Minimize Recruiter Mode" }).click();
+    const coachmark = page.getByTestId("tour-coachmark");
+    await expect(coachmark).toBeVisible();
+    await expect(coachmark.getByRole("heading", { name: "Portfolio health" })).toBeVisible();
+    await expect(coachmark).not.toContainText(/recruiter/i);
+    await expect(page.getByTestId("tour-spotlight")).toBeVisible();
+    await expect(page.getByTestId("tour-coachmark-arrow")).toBeVisible();
+    await coachmark.getByRole("button", { name: "Exit guided walkthrough" }).click();
     await expect(page.getByTestId("tour-open")).toBeVisible();
     await expect(page.getByTestId("tour-open")).toBeFocused();
     const quota = page.getByTestId("demo-quota");
@@ -63,9 +119,19 @@ test.describe("interactive recruiter demo", () => {
     await quota.locator("summary").click();
     await expect(quota.getByText(/Synthetic workspace · expires/)).toBeVisible();
     await page.getByTestId("tour-open").click();
-    await expect(panel).toBeVisible();
+    await expect(coachmark).toBeVisible();
+    await coachmark.getByTestId("tour-coachmark-next").click();
+    await page.waitForURL("**/plan");
+    await expect(coachmark.getByRole("heading", { name: "Plan and source" })).toBeVisible();
+    await coachmark.getByRole("button", { name: "All steps" }).click();
+    const panel = page.getByTestId("recruiter-mode-panel");
+    await expect(panel).toHaveAttribute("aria-hidden", "false");
+    await expect(panel.getByText("See how the project works")).toBeVisible();
+    await expect(panel).not.toContainText(/recruiter/i);
+    await panel.getByRole("button", { name: "Minimize guided walkthrough" }).click();
+    await expect(page.getByTestId("tour-open")).toContainText("2/8");
     await page.reload();
-    await expect(page.getByTestId("tour-open")).toBeVisible();
+    await expect(page.getByTestId("tour-open")).toContainText("2/8");
   });
 
   test("switches among seeded demo personas while preserving RBAC", async ({ page }) => {
@@ -73,24 +139,76 @@ test.describe("interactive recruiter demo", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
-    await minimizeRecruiterMode(page);
+    await closeRecruiterGuide(page);
     const bar = page.getByTestId("demo-role-bar");
     await expect(bar).toBeVisible();
     await expect(bar.getByTestId("demo-role-implementation_manager")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("tour-open").click();
+    await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Portfolio health" })).toBeVisible();
+    await closeRecruiterGuide(page);
 
     await bar.getByTestId("demo-role-solutions_engineer").click();
     await expect(bar.getByTestId("demo-role-solutions_engineer")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "AI Evidence" })).toHaveCount(0);
     expect((await page.request.get("/api/v1/ai-runs")).status()).toBe(403);
+    await page.getByTestId("tour-open").click();
+    await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Requirements" })).toBeVisible();
+    await expect(page.getByTestId("tour-spotlight")).toBeVisible();
+    await closeRecruiterGuide(page);
 
     await bar.getByTestId("demo-role-customer_stakeholder").click();
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Operations" })).toHaveCount(0);
+    await page.getByTestId("tour-open").click();
+    await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Project overview" })).toBeVisible();
+    await closeRecruiterGuide(page);
 
     await bar.getByTestId("demo-role-org_admin").click();
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Settings" })).toBeVisible();
+    await page.getByTestId("tour-open").click();
+    await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Portfolio health" })).toBeVisible();
+    await closeRecruiterGuide(page);
 
     await bar.getByTestId("demo-role-implementation_manager").click();
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "AI Evidence" })).toBeVisible();
+  });
+
+  test("resolves every role-aware coachmark to permitted visible evidence", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
+    await page.waitForURL("**/dashboard");
+
+    await walkCoachmarks(page, [
+      "Portfolio health",
+      "Plan and source",
+      "AI run details",
+      "Plan approval",
+      "Generate a plan",
+      "New board tasks",
+      "Failed job recovery",
+      "Customer update",
+    ]);
+
+    for (const persona of [
+      {
+        role: "solutions_engineer",
+        titles: ["Requirements", "Source documents", "Generate a plan", "Task board", "Job status"],
+      },
+      {
+        role: "customer_stakeholder",
+        titles: ["Project overview", "Timeline", "Published updates"],
+      },
+      {
+        role: "org_admin",
+        titles: ["Portfolio health", "Team access", "Audit history", "Background jobs"],
+      },
+    ] as const) {
+      await page.getByTestId(`demo-role-${persona.role}`).click();
+      await expect(page.getByTestId(`demo-role-${persona.role}`)).toHaveAttribute("aria-pressed", "true");
+      await page.getByTestId("tour-open").click();
+      await walkCoachmarks(page, [...persona.titles]);
+    }
   });
 
   test("keeps the authenticated shell operable on a phone-sized viewport", async ({ page }) => {
@@ -98,7 +216,7 @@ test.describe("interactive recruiter demo", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
-    await minimizeRecruiterMode(page);
+    await closeRecruiterGuide(page);
     await expect(page.getByRole("button", { name: /Open navigation/ })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.getByRole("button", { name: /Open navigation/ }).click();
@@ -109,11 +227,104 @@ test.describe("interactive recruiter demo", () => {
     await mobileNav.getByRole("button", { name: "Open search" }).click();
     await expect(page.getByRole("dialog", { name: "Global search" })).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.getByTestId("demo-role-org_admin").click();
-    await expect(page.getByTestId("demo-role-org_admin")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("demo-role-select").selectOption("org_admin");
+    await expect(page.getByTestId("demo-role-select")).toHaveValue("org_admin");
     await page.goto("/settings");
     await expect(page).toHaveURL(/\/settings\/?$/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+  test("adapts persona and project navigation from 320px through ultrawide", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
+    await page.waitForURL("**/dashboard");
+    await closeRecruiterGuide(page);
+
+    for (const width of [320, 390, 768, 1024, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expectNoInternalOverflow(page, "demo-role-bar");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      if (width < 1280) {
+        await expect(page.getByTestId("demo-role-select")).toBeVisible();
+        await expect(page.getByTestId("demo-role-implementation_manager")).toBeHidden();
+      } else {
+        await expect(page.getByTestId("demo-role-select")).toBeHidden();
+        await expect(page.getByTestId("demo-role-implementation_manager")).toBeVisible();
+      }
+    }
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/projects");
+    await page.getByRole("link", { name: "Order Intake Automation", exact: true }).first().click();
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("All projects");
+
+    for (const width of [320, 390, 768, 1024, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expectNoInternalOverflow(page, "project-navigation");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      if (width < 1280) {
+        await expect(page.getByTestId("project-section-select")).toBeVisible();
+        await expect(page.getByTestId("project-tabs")).toBeHidden();
+      } else {
+        await expect(page.getByTestId("project-section-select")).toBeHidden();
+        await expect(page.getByTestId("project-tabs")).toBeVisible();
+      }
+    }
+  });
+
+  test("coachmark navigation is reversible, anchored, and guide-only", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
+    await page.waitForURL("**/dashboard");
+    const mutationRequests: string[] = [];
+    page.on("request", (request) => {
+      if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method())) {
+        mutationRequests.push(`${request.method()} ${request.url()}`);
+      }
+    });
+
+    const coachmark = page.getByTestId("tour-coachmark");
+    await expect(coachmark).toBeVisible();
+    await expect(page.locator('[data-tour-target="dashboard-portfolio-health"]')).toHaveAttribute("data-tour-active", "true");
+    await expect(page.getByTestId("tour-spotlight")).toHaveCSS("pointer-events", "none");
+    await page.evaluate(() => window.scrollBy(0, 240));
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await expect(page.getByTestId("tour-coachmark-arrow")).toBeVisible();
+    await expect(page.getByTestId("tour-spotlight")).toBeVisible();
+    expect(await page.evaluate(() => {
+      const card = document.querySelector('[data-testid="tour-coachmark"]')?.getBoundingClientRect();
+      const target = document.querySelector('[data-tour-active="true"]')?.getBoundingClientRect();
+      if (!card || !target) return false;
+      return card.right <= target.left || card.left >= target.right || card.bottom <= target.top || card.top >= target.bottom;
+    })).toBe(true);
+
+    await coachmark.getByTestId("tour-coachmark-next").click();
+    await page.waitForURL("**/plan");
+    await expect(coachmark.getByRole("heading", { name: "Plan and source" })).toBeVisible();
+    await coachmark.getByRole("button", { name: "Back" }).click();
+    await page.waitForURL("**/dashboard");
+    await expect(coachmark.getByRole("heading", { name: "Portfolio health" })).toBeVisible();
+    await coachmark.getByRole("button", { name: "All steps" }).click();
+    await page.getByTestId("tour-restart").click();
+    await expect(coachmark.getByRole("heading", { name: "Portfolio health" })).toBeVisible();
+    expect(mutationRequests).toEqual([]);
+  });
+
+  test("offers a bounded fallback when a tour target is unavailable", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
+    await page.waitForURL("**/dashboard");
+    await closeRecruiterGuide(page);
+    await page.locator('[data-tour-target="dashboard-portfolio-health"]').evaluate((element) => element.remove());
+    await page.getByTestId("tour-open").click();
+    const coachmark = page.getByTestId("tour-coachmark");
+    await expect(coachmark.getByRole("heading", { name: "This item is no longer here" })).toBeVisible({ timeout: 7_000 });
+    await expect(coachmark.getByRole("button", { name: "Return to destination" })).toBeVisible();
+    await coachmark.getByRole("button", { name: "Continue" }).click();
+    await page.waitForURL("**/plan");
+    await expect(coachmark.getByRole("heading", { name: "Plan and source" })).toBeVisible();
   });
 
   test("requires confirmation and issues a fresh demo on reset", async ({ page }) => {
@@ -132,12 +343,13 @@ test.describe("interactive recruiter demo", () => {
     expect(secondWorkspace).not.toBe(firstWorkspace);
   });
 
-  test("keeps recruiter mode usable on a narrow viewport", async ({ page }) => {
+  test("keeps the guided walkthrough usable on a narrow viewport", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 900 });
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
-    await expect(page.getByTestId("recruiter-mode-panel")).toBeVisible();
+    await expect(page.getByTestId("tour-coachmark")).toBeVisible();
+    await expect(page.getByTestId("tour-spotlight")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(await page.locator("#main-content").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(700);
     await expect(page.locator("#portfolio-health-heading")).toBeVisible();

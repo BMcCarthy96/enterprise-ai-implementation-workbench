@@ -7,10 +7,16 @@ const outputDir = join(process.cwd(), "artifacts", "evidence");
 mkdirSync(outputDir, { recursive: true });
 
 async function switchDemoRole(page: Page, role: string) {
+  const coachmark = page.getByTestId("tour-coachmark");
+  if (await coachmark.isVisible().catch(() => false)) {
+    await coachmark
+      .getByRole("button", { name: "Exit guided walkthrough" })
+      .click();
+  }
   const panel = page.getByTestId("recruiter-mode-panel");
   if ((await panel.getAttribute("aria-hidden")) === "false") {
     await panel
-      .getByRole("button", { name: "Minimize Recruiter Mode" })
+      .getByRole("button", { name: "Minimize guided walkthrough" })
       .click();
     await page.getByTestId("tour-open").waitFor({ state: "visible" });
   }
@@ -84,14 +90,16 @@ async function main() {
     }
     await page.waitForURL("**/dashboard");
     await page.locator("#portfolio-health-heading").waitFor();
-    await page
-      .getByTestId("recruiter-mode-panel")
-      .waitFor({ state: "visible" });
+    await page.getByTestId("tour-coachmark").waitFor({ state: "visible" });
+    await page.getByTestId("tour-spotlight").waitFor({ state: "visible" });
     await page.screenshot({
       path: join(outputDir, "04-dashboard-recruiter-mode.png"),
       fullPage: false,
     });
-    await page.getByRole("button", { name: "Minimize Recruiter Mode" }).click();
+    await page
+      .getByTestId("tour-coachmark")
+      .getByRole("button", { name: "Exit guided walkthrough" })
+      .click();
 
     await page.goto(`${baseUrl}/ai-runs`, { waitUntil: "networkidle" });
     await page.screenshot({
