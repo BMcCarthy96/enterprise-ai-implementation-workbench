@@ -17,8 +17,10 @@ function baseConfig() {
   const e = env();
   const credentials = e.AWS_ROLE_ARN
     ? awsCredentialsProvider({
+        // The AWS trust policy uses Vercel's standard team-token audience.
+        // Supplying `audience` here would opt into a separate custom-token
+        // exchange and would no longer match that trust policy.
         roleArn: e.AWS_ROLE_ARN,
-        audience: e.AWS_OIDC_AUDIENCE ?? "https://vercel.com/bmccarthy96s-projects",
       })
     : undefined;
   return {
