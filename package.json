@@ -37,7 +37,7 @@
     "@aws-sdk/client-bedrock-runtime": "^3.1090.0",
     "@aws-sdk/client-lambda": "^3.1116.0",
     "@aws-sdk/client-s3": "^3.1090.0",
-    "@aws-sdk/client-sqs": "^3.1090.0",
+    "@aws-sdk/client-sqs": "^3.1115.0",
     "@aws-sdk/s3-request-presigner": "^3.1090.0",
     "@floating-ui/react": "^0.27.20",
     "@napi-rs/canvas": "^0.1.80",
