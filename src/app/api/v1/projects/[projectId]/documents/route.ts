@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { withAuth, parseBody, ApiError } from "@/lib/api";
 import { RegisterDocumentSchema } from "@/lib/apiSchemas";
 import { requireProject } from "@/server/services/access";
-import { completeDocumentUpload } from "@/server/services/documentIngestion";
+import { completeDocumentUpload } from "@/server/services/documentUploads";
 
 type Params = { projectId: string };
 

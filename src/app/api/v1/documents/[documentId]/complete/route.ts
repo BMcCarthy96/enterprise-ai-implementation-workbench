@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/api";
-import { completeDocumentUpload } from "@/server/services/documentIngestion";
+import { completeDocumentUpload } from "@/server/services/documentUploads";
 import { uuidParam } from "@/server/services/access";
 
 type Params = { documentId: string };
