@@ -7,6 +7,15 @@ async function closeGuide(page: Page) {
   }
 }
 
+async function resetDemoWorkspace(page: Page) {
+  const response = await page.request.post("/api/demo/reset", {
+    data: { confirmed: true },
+  });
+  expect(response.ok()).toBeTruthy();
+  await page.goto("/dashboard");
+  await page.waitForURL("**/dashboard**");
+}
+
 async function selectPersona(page: Page, role: string) {
   // The guided checkpoint can leave the page scrolled to its target content.
   // Bring the persistent persona control into view before choosing a role.
@@ -53,6 +62,7 @@ test("hosted worker completes generate, approve, and materialize", async ({ page
   await page.goto("/demo?checkpoint=portfolio-health");
   await page.waitForURL("**/dashboard**");
   await closeGuide(page);
+  await resetDemoWorkspace(page);
 
   await selectPersona(page, "solutions_engineer");
   await page.goto("/projects");
@@ -67,7 +77,10 @@ test("hosted worker completes generate, approve, and materialize", async ({ page
   const card = page.locator("div.card", { hasText: "Patient Onboarding Portal" });
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: "Approve", exact: true }).first().click();
-  await expect(card.getByText(/approved/i)).toBeVisible({ timeout: 30_000 });
+  // The recent-decision card also renders the approval subject and note, so
+  // a broad /approved/i locator is ambiguous after the queue refreshes. The
+  // exact status badge is the signal this flow is proving.
+  await expect(card.getByText("approved", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
 
   await page.goto("/projects");
   await page.getByRole("link", { name: "Patient Onboarding Portal", exact: true }).click();
