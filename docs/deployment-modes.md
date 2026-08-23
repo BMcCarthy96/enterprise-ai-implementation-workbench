@@ -1,7 +1,7 @@
 # Deployment modes
 
 The Workbench has two intentionally different deployment modes. Keeping them
-explicit prevents a polished recruiter walkthrough from being confused with a
+explicit prevents a polished guided walkthrough from being confused with a
 production launch plan.
 
 ## Persistent showcase environment
@@ -44,9 +44,8 @@ database.
 
 ## Production path
 
-The AWS/CDK path in [aws-deployment.md](aws-deployment.md) is infrastructure
-scaffolding plus a documented operating model. Before calling it production,
-add the web deployment target, run migrations as a release step, execute the
-health and async smoke tests, publish rollback instructions, and attach a
-staging observation to the proof manifest. The repository deliberately keeps
-those claims separate from the local deterministic demo.
+The AWS/CDK path in [aws-deployment.md](aws-deployment.md) is the worker and
+data-plane deployment. The public Vercel/Neon setup, migrations, smoke checks,
+and rollback steps are in [showcase-deployment.md](showcase-deployment.md). A
+public showcase is still a synthetic environment, separate from a production
+claim.

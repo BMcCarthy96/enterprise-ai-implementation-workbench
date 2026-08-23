@@ -12,8 +12,13 @@ const EnvSchema = z.object({
   OIDC_DEFAULT_CONNECTION: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
   AWS_REGION: z.string().default("us-east-1"),
   AWS_ENDPOINT_URL: z.string().url().optional(),
+  /** Optional Vercel OIDC role used by the hosted web runtime. */
+  AWS_ROLE_ARN: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
+  AWS_OIDC_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
   S3_BUCKET: z.string().min(1),
   JOBS_QUEUE_URL: z.string().url(),
+  /** When set, demo admin work moves to the isolated AWS control Lambda. */
+  DEMO_CONTROL_FUNCTION_ARN: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
   AI_PROVIDER: z.enum(["mock", "bedrock", "anthropic"]).default("mock"),
   BEDROCK_MODEL_ID: z
     .string()

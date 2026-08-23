@@ -15,6 +15,22 @@ on:
         description: Optional budget alert email
         required: false
         type: string
+      ai-provider:
+        description: Worker provider (mock keeps the public showcase deterministic)
+        required: true
+        default: mock
+      embedding-provider:
+        description: Embedding provider (mock keeps the public showcase deterministic)
+        required: true
+        default: mock
+      vercel-team-slug:
+        description: Vercel team slug used by the OIDC trust policy
+        required: true
+        default: bmccarthy96s-projects
+      vercel-project:
+        description: Exact Vercel project name used by the OIDC trust policy
+        required: true
+        default: enterprise-ai-implementation-workbench
 
 permissions:
   contents: read
@@ -45,10 +61,24 @@ jobs:
       - name: Verify CDK template
         run: npm run infra:synth
 
+      - name: Apply database migrations
+        env:
+          DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
+        run: |
+          if [ -z "$DATABASE_ADMIN_URL" ]; then
+            echo "DATABASE_ADMIN_URL is required on the production GitHub environment"
+            exit 1
+          fi
+          npm run db:migrate
+
       - name: Deploy
         working-directory: infra
         run: |
           npx cdk deploy \
             -c runtimeSecretName="${{ inputs['runtime-secret-name'] }}" \
             -c budgetEmail="${{ inputs['budget-email'] }}" \
+            -c aiProvider="${{ inputs['ai-provider'] }}" \
+            -c embeddingProvider="${{ inputs['embedding-provider'] }}" \
+            -c vercelTeamSlug="${{ inputs['vercel-team-slug'] }}" \
+            -c vercelProject="${{ inputs['vercel-project'] }}" \
             --require-approval never

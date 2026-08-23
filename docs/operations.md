@@ -1,8 +1,8 @@
 # Operations and SLO runbook
 
 The Operations view deliberately separates observed demo data from staging
-targets. It is safe to show a recruiter because it never turns an aspiration
-into an uptime claim.
+targets. It is safe to share because it never turns an aspiration into an
+uptime claim.
 
 ## Targets
 

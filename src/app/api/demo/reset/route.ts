@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
-import {
-  clientIp,
-  DEMO_TTL_SECONDS,
-  replaceDemoWorkspace,
-} from "@/server/services/demo";
+import { clientIp, DEMO_TTL_SECONDS } from "@/server/services/demoConfig";
+import { replaceDemoWorkspaceControlled } from "@/server/services/demoControl";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 function errorResponse(error: unknown) {
   const status = error && typeof error === "object" && "status" in error ? Number(error.status) : 503;
@@ -43,10 +43,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await replaceDemoWorkspace({
-      workspaceId: session.demoWorkspaceId,
-      orgId: session.orgId,
-      userId: session.userId,
+    const result = await replaceDemoWorkspaceControlled({
+      session,
       ip: clientIp(req.headers),
     });
     const response = NextResponse.json({

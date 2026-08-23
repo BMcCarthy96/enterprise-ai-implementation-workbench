@@ -64,6 +64,18 @@ export class WorkbenchStack extends Stack {
       "RuntimeSecret",
       runtimeSecretName,
     );
+    const aiProvider = String(this.node.tryGetContext("aiProvider") ?? "mock");
+    const embeddingProvider = String(
+      this.node.tryGetContext("embeddingProvider") ?? "mock",
+    );
+    const modelId = String(
+      this.node.tryGetContext("bedrockModelId") ??
+        "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    );
+    const embeddingModelId = String(
+      this.node.tryGetContext("bedrockEmbeddingModelId") ??
+        "amazon.titan-embed-text-v2:0",
+    );
 
     const workerLogs = new logs.LogGroup(this, "WorkerLogs", {
       retention: logs.RetentionDays.ONE_WEEK,
@@ -85,10 +97,10 @@ export class WorkbenchStack extends Stack {
         APP_ENCRYPTION_KEY: runtimeSecret.secretValueFromJson("APP_ENCRYPTION_KEY").unsafeUnwrap(),
         JOBS_QUEUE_URL: jobs.queueUrl,
         S3_BUCKET: documents.bucketName,
-        AI_PROVIDER: "bedrock",
-        EMBEDDING_PROVIDER: "bedrock",
-        BEDROCK_MODEL_ID: "anthropic.claude-sonnet-4-5-20250929-v1:0",
-        BEDROCK_EMBEDDING_MODEL_ID: "amazon.titan-embed-text-v2:0",
+        AI_PROVIDER: aiProvider,
+        EMBEDDING_PROVIDER: embeddingProvider,
+        BEDROCK_MODEL_ID: modelId,
+        BEDROCK_EMBEDDING_MODEL_ID: embeddingModelId,
       },
       bundling: { minify: true, sourceMap: true, externalModules: ["pdfjs-dist"] },
     });
@@ -97,16 +109,18 @@ export class WorkbenchStack extends Stack {
     // failed attempt, so the worker needs narrowly-scoped send permission too.
     jobs.grantSendMessages(worker);
     documents.grantReadWrite(worker);
-    worker.addToRolePolicy(
-      new iam.PolicyStatement({
-        sid: "InvokeBedrockModels",
-        actions: ["bedrock:InvokeModel"],
-        resources: [
-          `arn:${cdk.Aws.PARTITION}:bedrock:${cdk.Aws.REGION}::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0`,
-          `arn:${cdk.Aws.PARTITION}:bedrock:${cdk.Aws.REGION}::foundation-model/amazon.titan-embed-text-v2:0`,
-        ],
-      }),
-    );
+    if (aiProvider === "bedrock" || embeddingProvider === "bedrock") {
+      worker.addToRolePolicy(
+        new iam.PolicyStatement({
+          sid: "InvokeBedrockModels",
+          actions: ["bedrock:InvokeModel"],
+          resources: [
+            `arn:${cdk.Aws.PARTITION}:bedrock:${cdk.Aws.REGION}::foundation-model/${modelId}`,
+            `arn:${cdk.Aws.PARTITION}:bedrock:${cdk.Aws.REGION}::foundation-model/${embeddingModelId}`,
+          ],
+        }),
+      );
+    }
     worker.addEventSource(new sources.SqsEventSource(jobs, {
       batchSize: 5,
       reportBatchItemFailures: true,
@@ -170,6 +184,41 @@ export class WorkbenchStack extends Stack {
     });
     schedule.addTarget(new targets.LambdaFunction(cleanup));
 
+    // The Vercel web runtime never receives DATABASE_ADMIN_URL. Demo session
+    // creation, reset, persona switching, and quota accounting call this
+    // narrowly-scoped function instead, while the trusted worker retains the
+    // admin connection for background processing.
+    const demoControlLogs = new logs.LogGroup(this, "DemoControlLogs", {
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    const demoControl = new lambdaNodejs.NodejsFunction(this, "DemoControl", {
+      entry: resolve(__dirname, "../../src/worker/demoControlLambda.ts"),
+      projectRoot: resolve(__dirname, "../.."),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_22_X,
+      timeout: Duration.seconds(120),
+      memorySize: 1024,
+      reservedConcurrentExecutions: 4,
+      logGroup: demoControlLogs,
+      environment: {
+        DATABASE_URL: runtimeSecret.secretValueFromJson("DATABASE_URL").unsafeUnwrap(),
+        DATABASE_ADMIN_URL: runtimeSecret.secretValueFromJson("DATABASE_ADMIN_URL").unsafeUnwrap(),
+        SESSION_SECRET: runtimeSecret.secretValueFromJson("SESSION_SECRET").unsafeUnwrap(),
+        APP_ENCRYPTION_KEY: runtimeSecret.secretValueFromJson("APP_ENCRYPTION_KEY").unsafeUnwrap(),
+        JOBS_QUEUE_URL: jobs.queueUrl,
+        S3_BUCKET: documents.bucketName,
+        AI_PROVIDER: "mock",
+        EMBEDDING_PROVIDER: "mock",
+        WORKBENCH_ENV_MODE: "showcase",
+        DEMO_MAX_GENERATION_JOBS: String(this.node.tryGetContext("demoMaxGenerationJobs") ?? 1),
+        DEMO_MAX_DAILY_SPEND_USD: String(this.node.tryGetContext("demoMaxDailySpendUsd") ?? 1),
+        DEMO_MAX_MONTHLY_SPEND_USD: String(this.node.tryGetContext("demoMaxMonthlySpendUsd") ?? 15),
+      },
+      bundling: { minify: true, sourceMap: true, externalModules: ["pdfjs-dist"] },
+    });
+    documents.grantReadWrite(demoControl);
+
     new cloudwatch.Alarm(this, "QueueAgeAlarm", {
       metric: jobs.metricApproximateAgeOfOldestMessage({ period: Duration.minutes(5), statistic: "Maximum" }),
       threshold: 600,
@@ -204,7 +253,7 @@ export class WorkbenchStack extends Stack {
         : undefined,
     });
 
-    this.addVercelOidcRoles(documents, jobs);
+    this.addVercelOidcRoles(documents, jobs, demoControl);
     // These acknowledgements are intentionally narrow and documented: S3
     // access logging is delegated to CloudTrail in the reference deployment;
     // Lambda's AWS-managed basic execution policy is the platform baseline;
@@ -213,7 +262,7 @@ export class WorkbenchStack extends Stack {
       id: "AwsSolutions::AwsSolutions-S1",
       reason: "CloudTrail data events provide the request trail in the reference deployment; the bucket remains private and encrypted.",
     });
-    for (const fn of [worker, dispatcher, cleanup]) {
+    for (const fn of [worker, dispatcher, cleanup, demoControl]) {
       cdk.Validations.of(fn).acknowledge({
         id: "AwsSolutions::AwsSolutions-IAM4",
         reason: "AWSLambdaBasicExecutionRole is the AWS-managed minimum needed for Lambda log delivery; application permissions are inline and resource-scoped.",
@@ -245,22 +294,32 @@ export class WorkbenchStack extends Stack {
     new cdk.CfnOutput(this, "DocumentsBucketName", { value: documents.bucketName });
     new cdk.CfnOutput(this, "JobsQueueUrl", { value: jobs.queueUrl });
     new cdk.CfnOutput(this, "JobsDlqUrl", { value: deadLetter.queueUrl });
+    new cdk.CfnOutput(this, "DemoControlFunctionArn", { value: demoControl.functionArn });
   }
 
-  private addVercelOidcRoles(documents: s3.Bucket, jobs: sqs.Queue): void {
-    const teamId = this.node.tryGetContext("vercelTeamId") as string | undefined;
-    if (!teamId) return;
+  private addVercelOidcRoles(
+    documents: s3.Bucket,
+    jobs: sqs.Queue,
+    demoControl: lambda.IFunction,
+  ): void {
+    const teamSlug = this.node.tryGetContext("vercelTeamSlug") as string | undefined;
+    if (!teamSlug) return;
+    const project = String(
+      this.node.tryGetContext("vercelProject") ??
+        "enterprise-ai-implementation-workbench",
+    );
+    const issuer = `https://oidc.vercel.com/${teamSlug}`;
+    const audience = `https://vercel.com/${teamSlug}`;
+    const claims = {
+      [`oidc.vercel.com/${teamSlug}:aud`]: audience,
+      [`oidc.vercel.com/${teamSlug}:sub`]: `owner:${teamSlug}:project:${project}:environment:production`,
+    };
     const provider = new iam.OpenIdConnectProvider(this, "VercelOidc", {
-      url: "https://oidc.vercel.com",
-      clientIds: [`https://vercel.com/${teamId}`],
+      url: issuer,
+      clientIds: [audience],
     });
     new iam.Role(this, "VercelDeployRole", {
-      assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, {
-        StringEquals: {
-          "oidc.vercel.com:aud": `https://vercel.com/${teamId}`,
-          "oidc.vercel.com:sub": `team:${teamId}:project:${this.node.tryGetContext("vercelProject") ?? "enterprise-ai-implementation-workbench"}:environment:production`,
-        },
-      }),
+      assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, { StringEquals: claims }),
       inlinePolicies: {
         DeployOnly: new iam.PolicyDocument({ statements: [new iam.PolicyStatement({
           actions: ["cloudformation:DescribeStacks"],
@@ -269,12 +328,7 @@ export class WorkbenchStack extends Stack {
       },
     });
     new iam.Role(this, "VercelRuntimeRole", {
-      assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, {
-        StringEquals: {
-          "oidc.vercel.com:aud": "https://vercel.com/" + teamId,
-          "oidc.vercel.com:sub": "team:" + teamId + ":project:" + (this.node.tryGetContext("vercelProject") ?? "enterprise-ai-implementation-workbench") + ":environment:production",
-        },
-      }),
+      assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, { StringEquals: claims }),
       inlinePolicies: {
         RuntimeOnly: new iam.PolicyDocument({
           statements: [
@@ -283,8 +337,12 @@ export class WorkbenchStack extends Stack {
               resources: [documents.bucketArn + "/orgs/*"],
             }),
             new iam.PolicyStatement({
-              actions: ["sqs:SendMessage"],
+              actions: ["sqs:SendMessage", "sqs:GetQueueAttributes"],
               resources: [jobs.queueArn],
+            }),
+            new iam.PolicyStatement({
+              actions: ["lambda:InvokeFunction"],
+              resources: [demoControl.functionArn],
             }),
           ],
         }),

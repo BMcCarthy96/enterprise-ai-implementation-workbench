@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
-import { createDemoWorkspace, clientIp, DEMO_TTL_SECONDS } from "@/server/services/demo";
+import { clientIp, DEMO_TTL_SECONDS } from "@/server/services/demoConfig";
+import { createDemoWorkspaceControlled } from "@/server/services/demoControl";
 import { SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
+
+// Workspace seeding runs in the AWS control Lambda and can take longer than a
+// normal request on a cold start. Vercel uses this budget for the short-lived
+// orchestration request; the Lambda itself remains capped in CDK.
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   // Do not allow a cross-site form or fetch to replace a visitor's current
@@ -12,7 +19,7 @@ export async function POST(req: Request) {
     );
   }
   try {
-    const result = await createDemoWorkspace(clientIp(req.headers));
+    const result = await createDemoWorkspaceControlled(clientIp(req.headers));
     const response = NextResponse.json({
       workspaceId: result.workspace.id,
       expiresAt: result.workspace.expiresAt.toISOString(),

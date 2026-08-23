@@ -128,7 +128,7 @@ export default function CaseStudyPage() {
             This repository is an end-to-end portfolio implementation: product
             workflow, multi-tenant data model, AI evidence pipeline,
             background-job reliability, enterprise control APIs,
-            infrastructure-as-code, tests, and recruiter-facing proof are
+            infrastructure-as-code, tests, and public proof are
             maintained together so architectural claims remain inspectable.
           </p>
           <h2>Constraints and tradeoffs</h2>

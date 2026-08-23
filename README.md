@@ -23,6 +23,20 @@ the checkpoint only controls where the guided walkthrough opens.
 The sign-in page also includes an **Open demo workspace** action, so a visitor
 can enter the sample workspace without an account or password.
 
+## Public interactive demo
+
+The hosted setup is documented in [docs/showcase-deployment.md](docs/showcase-deployment.md).
+It uses Vercel for the web app, Neon for Postgres, and the existing AWS worker
+stack. The public URL should point to:
+
+```text
+https://<your-vercel-domain>/demo?checkpoint=portfolio-health
+```
+
+That route creates an expiring synthetic workspace and starts the walkthrough.
+The repository link can sit beside it for anyone who wants to inspect the
+implementation.
+
 ## Who this is for
 
 | Persona | What they get |
@@ -77,10 +91,11 @@ flowchart LR
     subgraph Browser
       UI[Next.js UI<br/>role-aware React]
     end
-    subgraph "Next.js server"
+    subgraph "Vercel web runtime"
       MW[Middleware<br/>JWT session check]
       API["/api/v1 REST<br/>zod validation + RBAC"]
       SC[Server Components<br/>org-scoped queries]
+      DC[Demo control invoke<br/>short-lived OIDC role]
     end
     subgraph "Persistent data"
       PG[(PostgreSQL + pgvector<br/>Neon or Aurora)]
@@ -89,6 +104,7 @@ flowchart LR
       S3[(S3<br/>documents)]
       SQS[[SQS<br/>jobs queue + DLQ]]
       BR[Bedrock<br/>Claude + Titan]
+      DCL[Demo Control Lambda<br/>admin-only demo lifecycle]
     end
     W[Worker process<br/>long-poll + retries]
 
@@ -98,6 +114,9 @@ flowchart LR
     SC --> PG
     API -- presigned URLs --> S3
     API -- enqueue jobId --> SQS
+    API --> DC --> DCL
+    DCL --> PG
+    DCL --> S3
     W -- long poll --> SQS
     W --> PG
     W -- Converse API --> BR
@@ -160,7 +179,7 @@ sequenceDiagram
 
 ## Stack
 
-Next.js 16 (App Router) · TypeScript · PostgreSQL + Drizzle ORM · AWS SDK v3 (S3, SQS, Bedrock Runtime) · zod · jose (JWT sessions) · bcryptjs · pino · Vitest · Playwright · GitHub Actions · Docker Compose + LocalStack
+Next.js 16 (App Router) · TypeScript · PostgreSQL + Drizzle ORM · AWS SDK v3 (S3, SQS, Lambda, Bedrock Runtime) · Vercel OIDC · zod · jose (JWT sessions) · bcryptjs · pino · Vitest · Playwright · GitHub Actions · Docker Compose + LocalStack
 
 ## Getting started
 
@@ -177,7 +196,7 @@ npm run worker                # background job worker (second terminal)
 npm run eval:offline          # deterministic 15-case contract regression gate (including retrieval on/off)
 npm run infra:install && npm run infra:synth  # CDK template validation
 npm run capture:evidence                     # deterministic 1440×900 screenshots
-npm run capture:video                        # repeatable silent recruiter walkthrough (WebM)
+npm run capture:video                        # repeatable silent guided walkthrough (WebM)
 ```
 
 Sign in with any demo account (password `demo1234`):
@@ -226,7 +245,7 @@ An **Insights** dashboard (`/insights`, admin + manager only) turns the audit an
 
 The **AI Evidence Center** (`/ai-runs`) is the inspectable evidence layer: each plan or digest trace links retrieval metadata, initial generation, validation/repair outcomes, persisted hard-gate and quality-signal evaluations, requirement/citation coverage, the generated artifact, and its human approval decision. Token usage is labeled `reported` vs `estimated`, pricing is versioned, and raw production prompts, source text, and model output are intentionally excluded from retained evidence. Historical runs without evaluation rows are labeled as legacy rather than silently backfilled.
 
-The isolated demo exposes the same workflow through four synthetic identities — Operations Admin, Implementation Manager, Solutions Engineer, and Customer Stakeholder. The role bar changes the actual session user and re-runs normal RBAC checks, so a recruiter can show both what each persona can do and what it cannot access in one click. Switching never extends the demo TTL, and reset always returns to the manager persona.
+The isolated demo exposes the same workflow through four synthetic identities — Operations Admin, Implementation Manager, Solutions Engineer, and Customer Stakeholder. The role bar changes the actual session user and re-runs normal RBAC checks, so someone reviewing the project can compare each persona's access in one click. Switching never extends the demo TTL, and reset always returns to the manager persona.
 
 The Insights page also separates live telemetry from the committed **offline regression suite**. The scorecard shows case count, categories, prompt variants, hard-gate status, baseline delta, provider, suite version, and freshness (stale after 30 days).
 

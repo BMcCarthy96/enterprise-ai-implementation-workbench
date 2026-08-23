@@ -1,0 +1,50 @@
+name: Public showcase smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Deployed showcase URL, for example https://workbench.vercel.app
+        required: false
+        type: string
+  schedule:
+    - cron: "17 13 * * 1-5"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Verify the public demo
+    runs-on: ubuntu-latest
+    env:
+      SHOWCASE_BASE_URL: ${{ inputs.base_url || vars.SHOWCASE_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Check that a showcase URL is configured
+        run: |
+          if [ -z "$SHOWCASE_BASE_URL" ]; then
+            echo "Set the base_url input or the SHOWCASE_BASE_URL repository variable"
+            exit 1
+          fi
+      - run: npm run test:showcase
+      - name: Run Lighthouse budgets
+        run: npx --yes @lhci/cli@0.14.x autorun --config=lighthouserc.cjs
+        env:
+          LHCI_BASE_URL: ${{ inputs.base_url || vars.SHOWCASE_BASE_URL }}
+      - name: Upload hosted smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: showcase-smoke-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14

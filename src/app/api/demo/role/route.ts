@@ -3,7 +3,9 @@ import { z } from "zod";
 import { getSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
 import { withTenantTransaction } from "@/db";
 import { recordAudit } from "@/server/services/audit";
-import { switchDemoPersona } from "@/server/services/demo";
+import { switchDemoPersonaControlled } from "@/server/services/demoControl";
+
+export const runtime = "nodejs";
 
 const RoleSwitchSchema = z.object({
   role: z.enum(["org_admin", "implementation_manager", "solutions_engineer", "customer_stakeholder"]),
@@ -43,10 +45,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "A valid demo role is required", code: "DEMO_ROLE_INVALID" }, { status: 400 });
   }
   try {
-    const result = await switchDemoPersona({
-      workspaceId: session.demoWorkspaceId,
-      orgId: session.orgId,
-      currentUserId: session.userId,
+    const result = await switchDemoPersonaControlled({
+      session,
       role: parsed.data.role,
       returnTo: parsed.data.returnTo,
     });

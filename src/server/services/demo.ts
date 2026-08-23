@@ -10,8 +10,13 @@ import { hashPassword } from "@/lib/auth/password";
 import { createSessionToken, type SessionPayload } from "@/lib/auth/session";
 import { ROLES, type Role } from "@/lib/auth/rbac";
 import { safeDemoReturnPath, type DemoScenarioRefs } from "@/lib/tour";
+import {
+  DEMO_ESTIMATED_RESERVATION_USD,
+  DEMO_TTL_SECONDS,
+} from "@/server/services/demoConfig";
 
-export const DEMO_TTL_SECONDS = 60 * 60;
+export { DEMO_ESTIMATED_RESERVATION_USD, DEMO_TTL_SECONDS } from "@/server/services/demoConfig";
+
 export const DEMO_MAX_ACTIVE = 20;
 function configuredPositiveNumber(name: string, fallback: number): number {
   const value = Number(process.env[name]);
@@ -29,7 +34,6 @@ const DEMO_MAX_GENERATION_JOBS = Math.max(
   1,
   Math.floor(configuredPositiveNumber("DEMO_MAX_GENERATION_JOBS", 1)),
 );
-export const DEMO_ESTIMATED_RESERVATION_USD = 0.05;
 
 export const DEMO_PERSONA_ROLES = [
   "org_admin",
@@ -194,14 +198,6 @@ export function hashDemoIp(ip: string): string {
   return createHash("sha256")
     .update(`${process.env.SESSION_SECRET ?? "demo"}:${ip}`)
     .digest("hex");
-}
-
-export function clientIp(headers: Headers): string {
-  return (
-    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    headers.get("x-real-ip") ??
-    "unknown"
-  );
 }
 
 export async function createDemoWorkspace(ip: string): Promise<{
@@ -445,7 +441,7 @@ Brightlane wants a controlled order intake workflow for approved source systems.
         ipHash,
         expiresAt,
         // Public workspaces are intentionally capped to one live generation;
-        // seeded evidence keeps the rest of the recruiter walkthrough instant.
+        // seeded evidence keeps the rest of the guided walkthrough instant.
         maxGenerationJobs: DEMO_MAX_GENERATION_JOBS,
       });
       await tx.insert(schema.customers).values([
@@ -929,7 +925,7 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           action: "demo.workspace_seeded",
           subjectType: "organization",
           subjectId: orgId,
-          metadata: { synthetic: true, scenario: "recruiter_walkthrough" },
+          metadata: { synthetic: true, scenario: "guided_walkthrough" },
           createdAt: demoDaysAgo(30),
         },
         {

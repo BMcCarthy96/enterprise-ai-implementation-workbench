@@ -94,6 +94,12 @@ export async function getTokenSession(): Promise<SessionPayload | null> {
   return verifySessionToken(token);
 }
 
+/** Read the signed cookie for a server-to-server demo-control invocation. */
+export async function getSessionToken(): Promise<string | null> {
+  const store = await cookies();
+  return store.get(SESSION_COOKIE)?.value ?? null;
+}
+
 /**
  * Return a session only while its organization membership is still active and
  * unchanged. Legacy tokens without membership versioning fail closed.

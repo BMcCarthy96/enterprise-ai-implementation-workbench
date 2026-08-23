@@ -1,6 +1,8 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import { SQSClient } from "@aws-sdk/client-sqs";
 import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
+import { LambdaClient } from "@aws-sdk/client-lambda";
+import { awsCredentialsProvider } from "@vercel/oidc-aws-credentials-provider";
 import { env } from "@/lib/env";
 
 /**
@@ -13,15 +15,23 @@ import { env } from "@/lib/env";
  */
 function baseConfig() {
   const e = env();
+  const credentials = e.AWS_ROLE_ARN
+    ? awsCredentialsProvider({
+        roleArn: e.AWS_ROLE_ARN,
+        audience: e.AWS_OIDC_AUDIENCE ?? "https://vercel.com/bmccarthy96s-projects",
+      })
+    : undefined;
   return {
     region: e.AWS_REGION,
     ...(e.AWS_ENDPOINT_URL ? { endpoint: e.AWS_ENDPOINT_URL } : {}),
+    ...(credentials ? { credentials } : {}),
   };
 }
 
 let s3: S3Client | undefined;
 let sqs: SQSClient | undefined;
 let bedrock: BedrockRuntimeClient | undefined;
+let lambda: LambdaClient | undefined;
 
 export function s3Client(): S3Client {
   if (!s3) {
@@ -43,4 +53,10 @@ export function bedrockClient(): BedrockRuntimeClient {
     bedrock = new BedrockRuntimeClient({ region: env().AWS_REGION });
   }
   return bedrock;
+}
+
+/** Invoke the narrow demo-control function when the web runtime is hosted. */
+export function lambdaClient(): LambdaClient {
+  if (!lambda) lambda = new LambdaClient(baseConfig());
+  return lambda;
 }

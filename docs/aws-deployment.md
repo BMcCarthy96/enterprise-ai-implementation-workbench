@@ -4,10 +4,10 @@ The production shape is intentionally AWS-first while keeping the application po
 
 - **Neon Postgres + pgvector** supplies a pooled runtime URL and a separate direct admin/migration URL.
 - **CDK** provisions a private encrypted S3 bucket, SQS queue + DLQ, an SQS-triggered Lambda worker, a one-minute durable-dispatch reconciler, an hourly expired-demo cleanup Lambda, CloudWatch alarms, and a $15 monthly budget.
-- **Bedrock Converse** runs Claude plan generation; **Titan Text Embeddings v2** powers retrieval.
-- **Vercel** can host the Next.js UI, but its runtime must use an approved short-lived AWS credential pattern. The optional OIDC role in this stack is a deployment-role scaffold, not a reason to place long-lived AWS keys in Vercel.
+- **Bedrock Converse** can run Claude plan generation; **Titan Text Embeddings v2** can power retrieval. The public showcase defaults both paths to deterministic mock providers.
+- **Vercel** hosts the Next.js UI through a short-lived OIDC role. A separate Demo Control Lambda handles the few admin-only demo operations so `DATABASE_ADMIN_URL` never enters Vercel.
 
-The local/cloud switch remains configuration-only: remove `AWS_ENDPOINT_URL`, use the real Neon URLs and CDK outputs, and set `AI_PROVIDER=bedrock` plus `EMBEDDING_PROVIDER=bedrock`.
+The local/cloud switch remains configuration-only: remove `AWS_ENDPOINT_URL`, use the real Neon URLs and CDK outputs, and set `AI_PROVIDER=mock` plus `EMBEDDING_PROVIDER=mock` for the public showcase. A private environment can set both to `bedrock`.
 
 ## Prerequisites
 
@@ -50,11 +50,11 @@ npx cdk synth
 npx cdk deploy \
   -c runtimeSecretName=enterprise-ai-workbench/runtime \
   -c budgetEmail=you@example.com \
-  -c vercelTeamId=<team-id> \
+  -c vercelTeamSlug=bmccarthy96s-projects \
   -c vercelProject=<project-name>
 ```
 
-The deploy prints `DocumentsBucketName`, `JobsQueueUrl`, and `JobsDlqUrl`. Copy those values into the application runtime environment. The stack uses a 120-second Lambda timeout, 720-second SQS visibility timeout, batch size 5, reserved concurrency 2, partial-batch failure reporting, and a five-delivery DLQ policy.
+The deploy prints `DocumentsBucketName`, `JobsQueueUrl`, `JobsDlqUrl`, `DemoControlFunctionArn`, and `VercelRuntimeRoleArn`. Copy the relevant values into the application runtime environment. The stack uses a 120-second Lambda timeout, 720-second SQS visibility timeout, batch size 5, reserved concurrency 2, partial-batch failure reporting, and a five-delivery DLQ policy.
 
 For a repeatable release path, the repository also includes a manual
 `.github/workflows/deploy.yml` workflow. Configure the GitHub environment with
@@ -81,7 +81,7 @@ psql "$DATABASE_ADMIN_URL" -v runtime_role=workbench_runtime -f scripts/provisio
 
 The admin role must retain `BYPASSRLS`; the runtime connection must use the named restricted role.
 
-Configure the Next.js runtime with:
+Configure the Next.js runtime with the following private-environment values:
 
 ```bash
 DATABASE_URL=<pooled Neon runtime URL>
@@ -99,7 +99,13 @@ NODE_ENV=production
 
 The Lambda worker receives its database and session values from Secrets Manager and its bucket/queue names directly from the CDK stack. Its IAM role is limited to the required S3, SQS send/consume, Bedrock model invocation, and CloudWatch execution duties; the database roles enforce application-vs-admin separation.
 
-For a Vercel-hosted UI, use a short-lived OIDC/role-assumption bridge or keep the server runtime in an AWS role-bearing service such as App Runner/ECS. Do not put a permanent `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` pair in Vercel project settings. The optional Vercel OIDC context in CDK is constrained to the named project/environment and is intended for deployment automation.
+For a Vercel-hosted UI, set `AWS_ROLE_ARN`, `AWS_OIDC_AUDIENCE`,
+`DEMO_CONTROL_FUNCTION_ARN`, `S3_BUCKET`, and `JOBS_QUEUE_URL` from the CDK
+outputs. Do not set `DATABASE_ADMIN_URL` or a permanent
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` pair in Vercel. The OIDC trust is
+constrained to the exact team slug, project name, and production environment.
+The complete public showcase sequence is in
+[showcase-deployment.md](showcase-deployment.md).
 
 ## Local-to-cloud mapping
 
@@ -145,8 +151,8 @@ provider circuit breaker is open.
 - Keep `DATABASE_URL` on a least-privilege runtime role and `DATABASE_ADMIN_URL` on a separate migration/cleanup role.
 - After provisioning those roles, force RLS on tenant tables and grant the runtime role only the tables/actions needed by the app.
 - Keep S3 public access blocked and preserve the `orgs/{orgId}/projects/{projectId}/...` key namespace.
-- Enable the CloudWatch queue-age, DLQ, and worker-error alarms before a recruiter demo.
+- Enable the CloudWatch queue-age, DLQ, and worker-error alarms before a public demo.
 - The cleanup Lambda removes expired demo organizations and their exact `orgs/{orgId}/` object prefixes hourly.
 - Keep the $15 budget and email thresholds enabled; Bedrock is pay-per-token and Neon/S3/SQS are usage-based.
 
-The trust-boundary details, redaction behavior, RLS assumptions, and explicit non-goals are in [security.md](security.md). The repeatable 90-second walkthrough is in [recruiter-demo-script.md](recruiter-demo-script.md).
+The trust-boundary details, redaction behavior, RLS assumptions, and explicit non-goals are in [security.md](security.md). The repeatable 90-second walkthrough is in [recruiter-demo-script.md](recruiter-demo-script.md) (titled **Guided walkthrough**).

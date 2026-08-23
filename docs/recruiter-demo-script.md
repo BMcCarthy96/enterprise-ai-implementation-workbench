@@ -1,4 +1,4 @@
-# Recruiter walkthrough (90 seconds)
+# Guided walkthrough (90 seconds)
 
 Use the public landing page first, then launch a private demo workspace. Keep the narration focused on the engineering decisions and the evidence they produce.
 

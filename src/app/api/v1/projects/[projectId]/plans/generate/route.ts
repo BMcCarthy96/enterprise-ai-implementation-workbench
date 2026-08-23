@@ -4,11 +4,13 @@ import { db, schema } from "@/db";
 import { withAuth, ApiError } from "@/lib/api";
 import { requireProject } from "@/server/services/access";
 import { createAndEnqueueJob } from "@/server/services/jobs";
+import { DEMO_ESTIMATED_RESERVATION_USD } from "@/server/services/demoConfig";
 import {
-  DEMO_ESTIMATED_RESERVATION_USD,
-  reconcileDemoGeneration,
-  reserveDemoGeneration,
-} from "@/server/services/demo";
+  reconcileDemoGenerationControlled,
+  reserveDemoGenerationControlled,
+} from "@/server/services/demoControl";
+
+export const runtime = "nodejs";
 
 type Params = { projectId: string };
 
@@ -47,7 +49,7 @@ export const POST = withAuth<Params>(
     }
 
     const reservedDemoUsd = session.demoWorkspaceId
-      ? await reserveDemoGeneration({ orgId: session.orgId, userId: session.userId })
+      ? await reserveDemoGenerationControlled({ session })
       : 0;
     try {
       const jobId = await createAndEnqueueJob({
@@ -62,7 +64,7 @@ export const POST = withAuth<Params>(
       return NextResponse.json({ jobId }, { status: 202 });
     } catch (error) {
       if (reservedDemoUsd) {
-        await reconcileDemoGeneration({ orgId: session.orgId, reservedUsd: reservedDemoUsd });
+        await reconcileDemoGenerationControlled({ session, reservedUsd: reservedDemoUsd });
       }
       throw error;
     }
