@@ -20,6 +20,19 @@ async function selectPersona(page: Page, role: string) {
   await expect(page.getByTestId(`demo-role-${role}`)).toHaveAttribute("aria-pressed", "true").catch(() => undefined);
 }
 
+async function openProjectSection(page: Page, label: "Plan" | "Delivery") {
+  const routes = { Plan: "/plan", Delivery: "/board" } as const;
+  const select = page.getByTestId("project-section-select");
+  if (await select.isVisible().catch(() => false)) {
+    await Promise.all([
+      page.waitForURL(`**${routes[label]}`),
+      select.selectOption({ label }),
+    ]);
+    return;
+  }
+  await page.getByRole("navigation", { name: "Project sections" }).getByRole("link", { name: label }).click();
+}
+
 test("public demo entry and dependency health are available", async ({ page, request }) => {
   const health = await request.get("/api/health");
   expect(health.status()).toBe(200);
@@ -42,7 +55,7 @@ test("hosted worker completes generate, approve, and materialize", async ({ page
   await selectPersona(page, "solutions_engineer");
   await page.goto("/projects");
   await page.getByRole("link", { name: "Patient Onboarding Portal", exact: true }).click();
-  await page.getByRole("navigation", { name: "Project sections" }).getByRole("link", { name: "Plan" }).click();
+  await openProjectSection(page, "Plan");
   await page.getByRole("button", { name: "Generate implementation plan" }).click();
   await expect(page.getByText(/Plan v\d/)).toBeVisible({ timeout: 75_000 });
   await expect(page.getByText("awaiting review", { exact: false })).toBeVisible();
@@ -56,6 +69,6 @@ test("hosted worker completes generate, approve, and materialize", async ({ page
 
   await page.goto("/projects");
   await page.getByRole("link", { name: "Patient Onboarding Portal", exact: true }).click();
-  await page.getByRole("navigation", { name: "Project sections" }).getByRole("link", { name: "Delivery" }).click();
+  await openProjectSection(page, "Delivery");
   await expect(page.getByText("Run kickoff workshop").first()).toBeVisible({ timeout: 30_000 });
 });
