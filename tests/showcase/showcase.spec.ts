@@ -8,6 +8,9 @@ async function closeGuide(page: Page) {
 }
 
 async function selectPersona(page: Page, role: string) {
+  // The guided checkpoint can leave the page scrolled to its target content.
+  // Bring the persistent persona control into view before choosing a role.
+  await page.getByTestId("demo-role-bar").scrollIntoViewIfNeeded();
   const select = page.getByTestId("demo-role-select");
   if (await select.isVisible().catch(() => false)) {
     await select.selectOption(role);
