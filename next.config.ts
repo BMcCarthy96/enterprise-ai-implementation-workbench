@@ -10,8 +10,9 @@ const nextConfig: NextConfig = {
   // Keep framework chrome out of recruiter screenshots and interactive controls.
   // Compile/runtime errors still surface in the terminal and Next.js overlay.
   devIndicators: false,
-  // Emit a standalone server bundle for container/App Runner deployment.
-  output: "standalone",
+  // Let Vercel use its native Next.js output adapter. Container/App Runner
+  // builds still get the standalone bundle they need.
+  output: process.env.VERCEL ? undefined : "standalone",
 };
 
 export default nextConfig;
