@@ -440,7 +440,7 @@ Brightlane wants a controlled order intake workflow for approved source systems.
         userId,
         ipHash,
         expiresAt,
-        // Public workspaces are intentionally capped to one live generation;
+        // Public workspaces allow a small number of live generations;
         // seeded evidence keeps the rest of the guided walkthrough instant.
         maxGenerationJobs: DEMO_MAX_GENERATION_JOBS,
       });
