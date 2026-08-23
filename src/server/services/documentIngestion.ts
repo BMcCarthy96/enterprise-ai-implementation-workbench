@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 import { and, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -42,6 +41,12 @@ export async function extractDocumentSections(
 ): Promise<DocumentSection[]> {
   const normalized = contentType.toLowerCase();
   if (normalized === "application/pdf" || fileName.toLowerCase().endsWith(".pdf")) {
+    // pdf-parse's bundled pdfjs build expects browser canvas globals. Lambda
+    // has no DOM, so provide the native Node canvas implementations before the
+    // parser module evaluates.
+    const { DOMMatrix, ImageData, Path2D } = await import("@napi-rs/canvas");
+    Object.assign(globalThis, { DOMMatrix, ImageData, Path2D });
+    const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: buffer });
     try {
       const result = await parser.getText();

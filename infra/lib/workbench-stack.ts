@@ -96,6 +96,7 @@ export class WorkbenchStack extends Stack {
     const worker = new lambdaNodejs.NodejsFunction(this, "Worker", {
       entry: resolve(__dirname, "../../src/worker/lambda.ts"),
       projectRoot: resolve(__dirname, "../.."),
+      depsLockFilePath: resolve(__dirname, "../../package-lock.json"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(120),
@@ -115,8 +116,14 @@ export class WorkbenchStack extends Stack {
         BEDROCK_EMBEDDING_MODEL_ID: embeddingModelId,
       },
       // pdf-parse loads pdfjs-dist through a runtime module path. Bundle the
-      // parser into the worker so document ingestion works in Lambda.
-      bundling: { minify: true, sourceMap: true },
+      // parser into the worker and ship the native canvas polyfill alongside
+      // it so document ingestion works in Lambda's Node.js runtime.
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ["@napi-rs/canvas"],
+        nodeModules: ["@napi-rs/canvas"],
+      },
     });
     jobs.grantConsumeMessages(worker);
     // Application-level retries publish a fresh delayed pointer after a
