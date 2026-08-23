@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
-import { clientIp, DEMO_TTL_SECONDS } from "@/server/services/demoConfig";
+import {
+  DEMO_TTL_SECONDS,
+  DEMO_VISITOR_COOKIE,
+  demoVisitorCookieOptions,
+  demoVisitorKey,
+} from "@/server/services/demoConfig";
 import { replaceDemoWorkspaceControlled } from "@/server/services/demoControl";
 
 export const runtime = "nodejs";
@@ -43,9 +48,10 @@ export async function POST(req: Request) {
   }
 
   try {
+    const visitor = demoVisitorKey(req.headers);
     const result = await replaceDemoWorkspaceControlled({
       session,
-      ip: clientIp(req.headers),
+      visitorKey: visitor.key,
     });
     const response = NextResponse.json({
       workspaceId: result.workspace.id,
@@ -57,6 +63,9 @@ export async function POST(req: Request) {
       },
     });
     response.cookies.set(SESSION_COOKIE, result.token, sessionCookieOptions(DEMO_TTL_SECONDS));
+    if (visitor.setCookie) {
+      response.cookies.set(DEMO_VISITOR_COOKIE, visitor.visitorId, demoVisitorCookieOptions);
+    }
     return response;
   } catch (error) {
     return errorResponse(error);

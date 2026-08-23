@@ -14,7 +14,7 @@ import type { Role } from "@/lib/auth/rbac";
  */
 export interface DemoControlEvent {
   operation: "create" | "switch" | "reset" | "reserve" | "reconcile";
-  ip?: string;
+  visitorKey?: string;
   sessionToken?: string;
   role?: Role;
   returnTo?: string | null;
@@ -128,14 +128,14 @@ async function tokenOrThrow(): Promise<string> {
   return token;
 }
 
-export async function createDemoWorkspaceControlled(ip: string) {
+export async function createDemoWorkspaceControlled(visitorKey: string) {
   if (localControlAllowed()) {
     const { createDemoWorkspace } = await import("@/server/services/demo");
-    return createDemoWorkspace(ip);
+    return createDemoWorkspace(visitorKey);
   }
   const result = await invoke<Awaited<ReturnType<typeof DemoService.createDemoWorkspace>>>({
     operation: "create",
-    ip,
+    visitorKey,
   });
   return normalizeWorkspaceResult(result);
 }
@@ -166,7 +166,7 @@ export async function switchDemoPersonaControlled(input: {
 
 export async function replaceDemoWorkspaceControlled(input: {
   session: SessionPayload;
-  ip: string;
+  visitorKey: string;
 }) {
   if (localControlAllowed()) {
     const { replaceDemoWorkspace } = await import("@/server/services/demo");
@@ -174,13 +174,13 @@ export async function replaceDemoWorkspaceControlled(input: {
       workspaceId: input.session.demoWorkspaceId!,
       orgId: input.session.orgId,
       userId: input.session.userId,
-      ip: input.ip,
+      visitorKey: input.visitorKey,
     });
   }
   const result = await invoke<Awaited<ReturnType<typeof DemoService.replaceDemoWorkspace>>>({
     operation: "reset",
     sessionToken: await tokenOrThrow(),
-    ip: input.ip,
+    visitorKey: input.visitorKey,
     confirmed: true,
   });
   return normalizeWorkspaceResult(result);

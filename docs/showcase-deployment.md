@@ -90,7 +90,7 @@ DEMO_CONTROL_FUNCTION_ARN=<DemoControlFunctionArn from CDK output>
 AI_PROVIDER=mock
 EMBEDDING_PROVIDER=mock
 WORKBENCH_ENV_MODE=showcase
-DEMO_MAX_GENERATION_JOBS=1
+DEMO_MAX_GENERATION_JOBS=2
 DEMO_MAX_DAILY_SPEND_USD=1
 DEMO_MAX_MONTHLY_SPEND_USD=15
 NODE_ENV=production
@@ -105,7 +105,10 @@ rate limit for `/api/demo/*` and `/api/v1/*`, then set the project’s spend and
 error alerts. Keep the project on a plan that allows the route’s 60-second
 function budget; creating or resetting a seeded workspace includes a cold
 Lambda invocation and several database writes. The app also enforces a
-workspace cap, a one-generation quota, and an expiry window in the database.
+workspace cap, two plan generations per browser visitor, and an expiry window
+in the database. A private HttpOnly visitor cookie keeps separate browsers on
+the same network from sharing a generation quota; the network address remains
+part of the key as a coarse abuse backstop.
 
 ## Verify the public URL
 

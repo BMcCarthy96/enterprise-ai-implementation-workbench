@@ -56,6 +56,7 @@ export function AppShell({
   const [mode, setMode] = useState<TourMode>("closed");
   const [resetting, setResetting] = useState(false);
   const [switchingRole, setSwitchingRole] = useState<Role | null>(null);
+  const [rolePromptOpen, setRolePromptOpen] = useState(false);
   const [resetPrompt, setResetPrompt] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const resetDialogRef = useRef<HTMLDialogElement>(null);
@@ -128,7 +129,9 @@ export function AppShell({
     if (mode === "coachmark" && nextStep && !sameTourPath(pathname, nextStep.href)) {
       router.replace(nextStep.href);
     }
-  }, [manifest.steps, mode, pathname, role, router]);
+    setMode("closed");
+    setRolePromptOpen(manifest.isDemo);
+  }, [manifest.isDemo, manifest.steps, mode, pathname, role, router]);
 
   useEffect(() => {
     if (mode === "closed") return;
@@ -282,8 +285,14 @@ export function AppShell({
     }
   }
 
+  function startRoleWalkthrough() {
+    setRolePromptOpen(false);
+    restart();
+  }
+
   async function switchRole(targetRole: Role) {
     if (targetRole === role || switchingRole) return;
+    setRolePromptOpen(false);
     setSwitchingRole(targetRole);
     try {
       const response = await fetch("/api/demo/role", {
@@ -315,6 +324,31 @@ export function AppShell({
       <div className="min-h-screen">
         {children}
       </div>
+
+      {rolePromptOpen && manifest.isDemo && (
+        <div
+          data-testid="role-tour-prompt"
+          role="status"
+          aria-live="polite"
+          className="fixed left-4 right-4 top-20 z-[70] max-w-sm rounded-2xl border border-cyan-200 bg-white p-4 text-slate-900 shadow-xl sm:left-auto sm:right-4"
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">
+            {manifest.demoPersonas?.find((persona) => persona.role === role)?.label ?? "Demo view"}
+          </p>
+          <h2 className="mt-1 text-base font-semibold">Start this walkthrough?</h2>
+          <p className="mt-1 text-sm leading-5 text-slate-600">
+            This view has a short path through {manifest.steps[0]?.title.toLowerCase() ?? "the project"} and the parts that matter for this role.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className="btn-primary" data-testid="role-tour-start" onClick={startRoleWalkthrough}>
+              Start this walkthrough
+            </button>
+            <button type="button" className="btn-secondary" data-testid="role-tour-dismiss" onClick={() => setRolePromptOpen(false)}>
+              Maybe later
+            </button>
+          </div>
+        </div>
+      )}
 
       {manifest.steps.length > 0 && (
         <>

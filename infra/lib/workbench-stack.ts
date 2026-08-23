@@ -232,7 +232,7 @@ export class WorkbenchStack extends Stack {
         AI_PROVIDER: "mock",
         EMBEDDING_PROVIDER: "mock",
         WORKBENCH_ENV_MODE: "showcase",
-        DEMO_MAX_GENERATION_JOBS: String(this.node.tryGetContext("demoMaxGenerationJobs") ?? 1),
+        DEMO_MAX_GENERATION_JOBS: String(this.node.tryGetContext("demoMaxGenerationJobs") ?? 2),
         DEMO_MAX_DAILY_SPEND_USD: String(this.node.tryGetContext("demoMaxDailySpendUsd") ?? 1),
         DEMO_MAX_MONTHLY_SPEND_USD: String(this.node.tryGetContext("demoMaxMonthlySpendUsd") ?? 15),
       },

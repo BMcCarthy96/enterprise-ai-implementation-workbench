@@ -32,7 +32,7 @@ const DEMO_MAX_MONTHLY_SPEND_USD = configuredPositiveNumber(
 );
 const DEMO_MAX_GENERATION_JOBS = Math.max(
   1,
-  Math.floor(configuredPositiveNumber("DEMO_MAX_GENERATION_JOBS", 1)),
+  Math.floor(configuredPositiveNumber("DEMO_MAX_GENERATION_JOBS", 2)),
 );
 
 export const DEMO_PERSONA_ROLES = [
@@ -194,17 +194,17 @@ function buildDemoPlan(input: {
   });
 }
 
-export function hashDemoIp(ip: string): string {
+export function hashDemoVisitorKey(visitorKey: string): string {
   return createHash("sha256")
-    .update(`${process.env.SESSION_SECRET ?? "demo"}:${ip}`)
+    .update(`${process.env.SESSION_SECRET ?? "demo"}:${visitorKey}`)
     .digest("hex");
 }
 
-export async function createDemoWorkspace(ip: string): Promise<{
+export async function createDemoWorkspace(visitorKey: string): Promise<{
   workspace: typeof schema.demoWorkspaces.$inferSelect;
   token: string;
 }> {
-  const ipHash = hashDemoIp(ip);
+  const ipHash = hashDemoVisitorKey(visitorKey);
   const now = new Date();
   const existing = await dbAdmin.query.demoWorkspaces.findFirst({
     where: and(
@@ -1208,7 +1208,7 @@ export async function replaceDemoWorkspace(input: {
   workspaceId: string;
   orgId: string;
   userId: string;
-  ip: string;
+  visitorKey: string;
 }): Promise<{
   workspace: typeof schema.demoWorkspaces.$inferSelect;
   token: string;
@@ -1257,7 +1257,7 @@ export async function replaceDemoWorkspace(input: {
   }
 
   const replacement = await provisionDemoWorkspace(
-    hashDemoIp(input.ip),
+    hashDemoVisitorKey(input.visitorKey),
     new Date(now.getTime() + DEMO_TTL_SECONDS * 1000),
   );
 

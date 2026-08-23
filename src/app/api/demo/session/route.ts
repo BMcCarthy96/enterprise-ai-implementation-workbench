@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { clientIp, DEMO_TTL_SECONDS } from "@/server/services/demoConfig";
+import {
+  DEMO_TTL_SECONDS,
+  DEMO_VISITOR_COOKIE,
+  demoVisitorCookieOptions,
+  demoVisitorKey,
+} from "@/server/services/demoConfig";
 import { createDemoWorkspaceControlled } from "@/server/services/demoControl";
 import { SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
 
@@ -19,7 +24,8 @@ export async function POST(req: Request) {
     );
   }
   try {
-    const result = await createDemoWorkspaceControlled(clientIp(req.headers));
+    const visitor = demoVisitorKey(req.headers);
+    const result = await createDemoWorkspaceControlled(visitor.key);
     const response = NextResponse.json({
       workspaceId: result.workspace.id,
       expiresAt: result.workspace.expiresAt.toISOString(),
@@ -30,6 +36,9 @@ export async function POST(req: Request) {
       },
     });
     response.cookies.set(SESSION_COOKIE, result.token, sessionCookieOptions(DEMO_TTL_SECONDS));
+    if (visitor.setCookie) {
+      response.cookies.set(DEMO_VISITOR_COOKIE, visitor.visitorId, demoVisitorCookieOptions);
+    }
     return response;
   } catch (error) {
     const status = error && typeof error === "object" && "status" in error ? Number(error.status) : 503;

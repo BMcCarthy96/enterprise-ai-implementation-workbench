@@ -12,7 +12,7 @@ import { ApiError } from "@/lib/api";
 
 export interface DemoControlEvent {
   operation: "create" | "switch" | "reset" | "reserve" | "reconcile";
-  ip?: string;
+  visitorKey?: string;
   sessionToken?: string;
   role?: Role;
   returnTo?: string | null;
@@ -46,7 +46,7 @@ function parseEvent(value: unknown): DemoControlEvent {
   }
   return {
     operation,
-    ip: typeof event?.ip === "string" ? event.ip : undefined,
+    visitorKey: typeof event?.visitorKey === "string" ? event.visitorKey : undefined,
     sessionToken: typeof event?.sessionToken === "string" ? event.sessionToken : undefined,
     role: role as Role | undefined,
     returnTo: typeof event?.returnTo === "string" ? event.returnTo : null,
@@ -71,10 +71,10 @@ export async function handler(event: unknown): Promise<DemoControlResult> {
     const input = parseEvent(event);
     switch (input.operation) {
       case "create":
-        if (!input.ip) {
-          throw new ApiError(400, "Client IP is required", "DEMO_IP_REQUIRED");
+        if (!input.visitorKey) {
+          throw new ApiError(400, "A demo visitor key is required", "DEMO_VISITOR_REQUIRED");
         }
-        return { ok: true, data: await createDemoWorkspace(input.ip) };
+        return { ok: true, data: await createDemoWorkspace(input.visitorKey) };
       case "switch": {
         const session = await authenticatedDemoSession(input);
         if (!input.role) {
@@ -93,7 +93,7 @@ export async function handler(event: unknown): Promise<DemoControlResult> {
       }
       case "reset": {
         const session = await authenticatedDemoSession(input);
-        if (!input.confirmed || !input.ip) {
+        if (!input.confirmed || !input.visitorKey) {
           throw new ApiError(400, "Reset requires explicit confirmation", "RESET_CONFIRMATION_REQUIRED");
         }
         return {
@@ -102,7 +102,7 @@ export async function handler(event: unknown): Promise<DemoControlResult> {
             workspaceId: session.demoWorkspaceId!,
             orgId: session.orgId,
             userId: session.userId,
-            ip: input.ip,
+            visitorKey: input.visitorKey,
           }),
         };
       }

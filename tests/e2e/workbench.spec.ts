@@ -29,6 +29,12 @@ async function closeRecruiterGuide(page: Page) {
   await expect(page.getByTestId("tour-open")).toBeVisible();
 }
 
+async function startRoleWalkthrough(page: Page) {
+  const prompt = page.getByTestId("role-tour-prompt");
+  await expect(prompt).toBeVisible({ timeout: 10_000 });
+  await prompt.getByRole("button", { name: "Start this walkthrough" }).click();
+}
+
 async function expectNoInternalOverflow(page: Page, testId: string) {
   expect(
     await page.getByTestId(testId).evaluate(
@@ -149,27 +155,30 @@ test.describe("interactive guided demo", () => {
 
     await bar.getByTestId("demo-role-solutions_engineer").click();
     await expect(bar.getByTestId("demo-role-solutions_engineer")).toHaveAttribute("aria-pressed", "true");
+    await startRoleWalkthrough(page);
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "AI Evidence" })).toHaveCount(0);
     expect((await page.request.get("/api/v1/ai-runs")).status()).toBe(403);
-    await page.getByTestId("tour-open").click();
     await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Requirements" })).toBeVisible();
     await expect(page.getByTestId("tour-spotlight")).toBeVisible();
     await closeRecruiterGuide(page);
 
     await bar.getByTestId("demo-role-customer_stakeholder").click();
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Operations" })).toHaveCount(0);
-    await page.getByTestId("tour-open").click();
+    await startRoleWalkthrough(page);
     await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Project overview" })).toBeVisible();
     await closeRecruiterGuide(page);
 
     await bar.getByTestId("demo-role-org_admin").click();
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Settings" })).toBeVisible();
-    await page.getByTestId("tour-open").click();
+    await startRoleWalkthrough(page);
     await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Portfolio health" })).toBeVisible();
     await closeRecruiterGuide(page);
 
     await bar.getByTestId("demo-role-implementation_manager").click();
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "AI Evidence" })).toBeVisible();
+    await startRoleWalkthrough(page);
+    await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Portfolio health" })).toBeVisible();
+    await closeRecruiterGuide(page);
   });
 
   test("resolves every role-aware coachmark to permitted visible evidence", async ({ page }) => {
@@ -206,7 +215,7 @@ test.describe("interactive guided demo", () => {
     ] as const) {
       await page.getByTestId(`demo-role-${persona.role}`).click();
       await expect(page.getByTestId(`demo-role-${persona.role}`)).toHaveAttribute("aria-pressed", "true");
-      await page.getByTestId("tour-open").click();
+      await startRoleWalkthrough(page);
       await walkCoachmarks(page, [...persona.titles]);
     }
   });
