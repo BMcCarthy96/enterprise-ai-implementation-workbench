@@ -327,7 +327,7 @@ export class WorkbenchStack extends Stack {
         })] }),
       },
     });
-    new iam.Role(this, "VercelRuntimeRole", {
+    const runtimeRole = new iam.Role(this, "VercelRuntimeRole", {
       assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, { StringEquals: claims }),
       inlinePolicies: {
         RuntimeOnly: new iam.PolicyDocument({
@@ -349,7 +349,7 @@ export class WorkbenchStack extends Stack {
       },
     });
     new cdk.CfnOutput(this, "VercelRuntimeRoleArn", {
-      value: cdk.Fn.getAtt("VercelRuntimeRole", "Arn").toString(),
+      value: runtimeRole.roleArn,
     });
   }
 }
