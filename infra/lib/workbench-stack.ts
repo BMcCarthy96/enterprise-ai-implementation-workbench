@@ -76,6 +76,18 @@ export class WorkbenchStack extends Stack {
       this.node.tryGetContext("bedrockEmbeddingModelId") ??
         "amazon.titan-embed-text-v2:0",
     );
+    // New AWS accounts often start with a Lambda account concurrency quota of
+    // 10. Reserved concurrency consumes that quota while AWS requires at
+    // least 10 executions to remain unreserved, so keep reservations opt-in.
+    // The SQS event source still limits worker fan-out for the showcase.
+    const workerReservedConcurrency = readOptionalConcurrency(
+      this.node.tryGetContext("workerReservedConcurrency"),
+      "workerReservedConcurrency",
+    );
+    const demoControlReservedConcurrency = readOptionalConcurrency(
+      this.node.tryGetContext("demoControlReservedConcurrency"),
+      "demoControlReservedConcurrency",
+    );
 
     const workerLogs = new logs.LogGroup(this, "WorkerLogs", {
       retention: logs.RetentionDays.ONE_WEEK,
@@ -88,7 +100,7 @@ export class WorkbenchStack extends Stack {
       runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(120),
       memorySize: 1024,
-      reservedConcurrentExecutions: 2,
+      reservedConcurrentExecutions: workerReservedConcurrency,
       logGroup: workerLogs,
       environment: {
         DATABASE_URL: runtimeSecret.secretValueFromJson("DATABASE_URL").unsafeUnwrap(),
@@ -199,7 +211,7 @@ export class WorkbenchStack extends Stack {
       runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(120),
       memorySize: 1024,
-      reservedConcurrentExecutions: 4,
+      reservedConcurrentExecutions: demoControlReservedConcurrency,
       logGroup: demoControlLogs,
       environment: {
         DATABASE_URL: runtimeSecret.secretValueFromJson("DATABASE_URL").unsafeUnwrap(),
@@ -352,4 +364,13 @@ export class WorkbenchStack extends Stack {
       value: runtimeRole.roleArn,
     });
   }
+}
+
+function readOptionalConcurrency(value: unknown, contextKey: string): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${contextKey} must be a non-negative integer when provided`);
+  }
+  return parsed;
 }

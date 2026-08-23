@@ -54,7 +54,7 @@ npx cdk deploy \
   -c vercelProject=<project-name>
 ```
 
-The deploy prints `DocumentsBucketName`, `JobsQueueUrl`, `JobsDlqUrl`, `DemoControlFunctionArn`, and `VercelRuntimeRoleArn`. Copy the relevant values into the application runtime environment. The stack uses a 120-second Lambda timeout, 720-second SQS visibility timeout, batch size 5, reserved concurrency 2, partial-batch failure reporting, and a five-delivery DLQ policy.
+The deploy prints `DocumentsBucketName`, `JobsQueueUrl`, `JobsDlqUrl`, `DemoControlFunctionArn`, and `VercelRuntimeRoleArn`. Copy the relevant values into the application runtime environment. The stack uses a 120-second Lambda timeout, 720-second SQS visibility timeout, batch size 5, an SQS event-source concurrency cap of 2, partial-batch failure reporting, and a five-delivery DLQ policy. Lambda reserved concurrency is left unset by default because new AWS accounts commonly start with a 10-execution account quota; accounts with more capacity can opt in with `-c workerReservedConcurrency=2 -c demoControlReservedConcurrency=4`.
 
 For a repeatable release path, the repository also includes a manual
 `.github/workflows/deploy.yml` workflow. Configure the GitHub environment with
