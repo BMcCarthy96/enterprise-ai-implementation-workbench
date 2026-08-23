@@ -114,7 +114,9 @@ export class WorkbenchStack extends Stack {
         BEDROCK_MODEL_ID: modelId,
         BEDROCK_EMBEDDING_MODEL_ID: embeddingModelId,
       },
-      bundling: { minify: true, sourceMap: true, externalModules: ["pdfjs-dist"] },
+      // pdf-parse loads pdfjs-dist through a runtime module path. Bundle the
+      // parser into the worker so document ingestion works in Lambda.
+      bundling: { minify: true, sourceMap: true },
     });
     jobs.grantConsumeMessages(worker);
     // Application-level retries publish a fresh delayed pointer after a

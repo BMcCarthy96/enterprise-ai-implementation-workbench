@@ -22,15 +22,17 @@ async function selectPersona(page: Page, role: string) {
 
 async function openProjectSection(page: Page, label: "Plan" | "Delivery") {
   const routes = { Plan: "/plan", Delivery: "/board" } as const;
-  const select = page.getByTestId("project-section-select");
-  if (await select.isVisible().catch(() => false)) {
+  const select = page.getByRole("combobox", { name: "Project section" });
+  if (await select.waitFor({ state: "visible", timeout: 10_000 }).then(() => true).catch(() => false)) {
     await Promise.all([
       page.waitForURL(`**${routes[label]}`),
       select.selectOption({ label }),
     ]);
     return;
   }
-  await page.getByRole("navigation", { name: "Project sections" }).getByRole("link", { name: label }).click();
+  const tab = page.getByRole("navigation", { name: "Project sections" }).getByRole("link", { name: label });
+  await tab.waitFor({ state: "visible", timeout: 10_000 });
+  await tab.click();
 }
 
 test("public demo entry and dependency health are available", async ({ page, request }) => {
