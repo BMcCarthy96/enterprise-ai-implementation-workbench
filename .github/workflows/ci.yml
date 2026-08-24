@@ -36,7 +36,7 @@ jobs:
       - run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: core-coverage
           path: coverage/
@@ -47,7 +47,7 @@ jobs:
         run: npm run proof:check
       - name: Upload offline evidence scorecard
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: offline-eval-evidence
           path: |
@@ -136,7 +136,7 @@ jobs:
         env:
           E2E_WORKER: "1"
         run: npx playwright test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
@@ -171,7 +171,7 @@ jobs:
           PROOF_EVIDENCE_VERIFIED_AT: ${{ steps.provenance.outputs.verified_at }}
           PROOF_EVIDENCE_CONCLUSION: success
       - name: Upload portfolio evidence bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: portfolio-evidence-bundle-${{ github.sha }}
           path: artifacts/proof-bundle/
