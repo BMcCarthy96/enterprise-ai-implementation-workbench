@@ -40,7 +40,7 @@ jobs:
           LHCI_BASE_URL: ${{ inputs.base_url || vars.SHOWCASE_BASE_URL }}
       - name: Upload hosted smoke evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: showcase-smoke-${{ github.run_id }}
           path: |
