@@ -128,8 +128,8 @@ export const proofClaims: ProofClaim[] = [
       },
       {
         kind: "demo",
-        label: "Switch demo personas",
-        href: "/demo?checkpoint=role-switching",
+        label: "Open admin access controls",
+        href: "/demo?persona=org_admin&checkpoint=platform-security",
       },
     ],
   },

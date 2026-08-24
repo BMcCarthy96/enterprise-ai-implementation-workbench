@@ -67,6 +67,14 @@ test("public demo entry and dependency health are available", async ({ page, req
   expect(robots.status()).toBe(200);
   expect(await robots.text()).toContain("Disallow: /demo");
 
+  await page.goto("/");
+  await expect(
+    page.getByRole("link", { name: "Explore self-guided demo" }),
+  ).toHaveAttribute("href", "/demo?tour=self-guided");
+  await expect(
+    page.getByRole("link", { name: "Take the 5-minute technical tour" }),
+  ).toHaveAttribute("href", "/demo?checkpoint=ai-evidence");
+
   await page.goto("/demo?checkpoint=portfolio-health");
   await page.waitForURL("**/dashboard**");
   await expect(page.getByTestId("demo-role-bar")).toBeVisible();

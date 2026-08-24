@@ -1,6 +1,6 @@
 # Interactive demo walkthrough
 
-Open the [live demo](https://enterprise-ai-implementation-workbe.vercel.app/demo?checkpoint=portfolio-health). It creates a short-lived sample workspace, so no account or password is needed.
+Open the [guided live demo](https://enterprise-ai-implementation-workbe.vercel.app/demo?checkpoint=portfolio-health). It creates a short-lived sample workspace, so no account or password is needed. Use the [self-guided entry](https://enterprise-ai-implementation-workbe.vercel.app/demo?tour=self-guided) when you want to browse without opening the coachmarks automatically.
 
 ## A quick pass
 

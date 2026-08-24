@@ -120,6 +120,9 @@ export function checkpointTourStepId(checkpoint: string | null): string | null {
   const checkpoints: Record<string, string> = {
     "portfolio-health": "portfolio-health",
     "ai-evidence": "repaired-ai-trace",
+    "approval-gate": "claims-approval",
+    "delivery-board": "generated-board",
+    "platform-security": "members",
     "role-switching": "portfolio-health",
     "dlq-recovery": "dead-letter-recovery",
   };

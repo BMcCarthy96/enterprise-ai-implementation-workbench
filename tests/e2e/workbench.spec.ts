@@ -61,6 +61,56 @@ async function walkCoachmarks(page: Page, titles: string[]) {
 }
 
 test.describe("interactive guided demo", () => {
+  test("keeps the public demo entries distinct", async ({ page }) => {
+    await page.goto("/");
+
+    await expect(
+      page.getByRole("link", { name: "Explore self-guided demo" }),
+    ).toHaveAttribute("href", "/demo?tour=self-guided");
+    await expect(
+      page.getByRole("link", { name: "Take the 5-minute technical tour" }),
+    ).toHaveAttribute("href", "/demo?checkpoint=ai-evidence");
+
+    await page.getByRole("link", { name: "Explore self-guided demo" }).click();
+    await page.waitForURL(/\/dashboard\?tour=self-guided$/);
+    await expect(page.getByTestId("demo-role-bar")).toBeVisible();
+    await expect(page.getByTestId("tour-coachmark")).toHaveCount(0);
+    await expect(page.getByTestId("guided-walkthrough-panel")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    await expect(page.getByTestId("tour-open")).toBeVisible();
+  });
+
+  test("opens the technical entry at the AI evidence checkpoint", async ({
+    page,
+  }) => {
+    await page.goto("/demo?checkpoint=ai-evidence");
+    await page.waitForURL(/\/ai-runs\/[^/?]+$/);
+    await expect(
+      page.getByRole("heading", { name: "AI evidence packet" }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("tour-coachmark").getByRole("heading", {
+        name: "AI run details",
+      }),
+    ).toBeVisible();
+  });
+
+  test("opens the platform entry as an Operations Admin", async ({ page }) => {
+    await page.goto("/demo?persona=org_admin&checkpoint=platform-security");
+    await page.waitForURL(/\/settings\/members\/?$/);
+    await expect(page.getByTestId("demo-role-org_admin")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(
+      page.getByTestId("tour-coachmark").getByRole("heading", {
+        name: "Team access",
+      }),
+    ).toBeVisible();
+  });
+
   test("opens a demo from the sign-in page without credentials", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByText("Interactive demo", { exact: true })).toBeVisible();

@@ -84,6 +84,9 @@ describe("role-aware product tour", () => {
   it("resolves checkpoints and reconciles a persona to its current permitted route", () => {
     const adminSteps = buildRoleTourSteps("org_admin", refs);
     expect(checkpointTourStepId("ai-evidence")).toBe("repaired-ai-trace");
+    expect(checkpointTourStepId("approval-gate")).toBe("claims-approval");
+    expect(checkpointTourStepId("delivery-board")).toBe("generated-board");
+    expect(checkpointTourStepId("platform-security")).toBe("members");
     expect(checkpointTourStepId("unknown")).toBeNull();
     expect(reconcileTourStepId(adminSteps, "/ops")).toBe("operations");
     expect(reconcileTourStepId(adminSteps, "/projects/order/plan")).toBe("portfolio-health");

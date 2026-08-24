@@ -17,11 +17,11 @@ A multi-tenant internal platform for software implementation teams: it turns mes
 
 The public demo is synthetic by design. Every evidence packet identifies whether it is a fixture, deterministic mock run, or live provider observation; no synthetic fixture is presented as production telemetry.
 
-The public journey has three entry points: **Start 90-second tour** for the
-short delivery story, **5-minute technical tour** for retrieval, role
-switching, and failure recovery, and **Explore self-guided demo** for the full
-isolated workspace. All three provision the same expiring synthetic boundary;
-the checkpoint only controls where the guided walkthrough opens.
+The public journey has three entry points: **Start 90-second tour** opens the
+guided delivery story, **5-minute technical tour** starts at the AI evidence
+packet, and **Explore self-guided demo** opens the full workspace with the
+walkthrough closed. All three create a separate expiring synthetic workspace.
+The walkthrough can still be opened from its docked control while browsing.
 The sign-in page also includes an **Open demo workspace** action, so a visitor
 can enter the sample workspace without an account or password.
 
@@ -38,6 +38,13 @@ https://enterprise-ai-implementation-workbe.vercel.app/demo?checkpoint=portfolio
 That route creates an expiring synthetic workspace and starts the walkthrough.
 The repository link can sit beside it for anyone who wants to inspect the
 implementation.
+
+The other public entries are intentionally different:
+
+- Self-guided workspace: `/demo?tour=self-guided`
+- AI evidence tour: `/demo?checkpoint=ai-evidence`
+- Approval and delivery path: `/demo?checkpoint=approval-gate`
+- Admin and security path: `/demo?persona=org_admin&checkpoint=platform-security`
 
 ## Who this is for
 

@@ -81,8 +81,8 @@ export default function ProofPage() {
           <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <ReviewLens title="Quick review" body="Follow the shortest path from seeded requirements to a governed delivery artifact." href="/demo?checkpoint=portfolio-health" />
             <ReviewLens title="AI system" body="Inspect retrieval, repair, validation, citations, origin, and the human decision." href="/demo?checkpoint=ai-evidence" />
-            <ReviewLens title="Product delivery" body="See risk, approvals, task materialization, customer-safe updates, and audit." href="/demo?checkpoint=portfolio-health" />
-            <ReviewLens title="Platform & security" body="Start with session-backed role switching, then choose Operations Admin for enterprise Settings and recovery controls." href="/demo?checkpoint=role-switching" />
+            <ReviewLens title="Product delivery" body="Start at the approval gate, then follow the work into tasks and customer updates." href="/demo?checkpoint=approval-gate" />
+            <ReviewLens title="Platform & security" body="Open the admin view for access controls, audit history, and failed-job recovery." href="/demo?persona=org_admin&checkpoint=platform-security" />
           </div>
         </section>
 

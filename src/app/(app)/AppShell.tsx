@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isSelfGuidedDemo } from "@/lib/demoEntry";
 import {
   checkpointTourStepId,
   completeTourStep,
@@ -46,6 +47,7 @@ export function AppShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const selfGuided = isSelfGuidedDemo(searchParams);
   const storageKey = useMemo(
     () => `workbench:tour:${manifest.version}:${manifest.workspaceId ?? "org"}:${userId}:${manifest.role}`,
     [manifest.role, manifest.version, manifest.workspaceId, userId],
@@ -84,7 +86,11 @@ export function AppShell({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setProgress(initial);
       const autoOpened = manifest.isDemo && window.localStorage.getItem(autoOpenKey) === "true";
-      if (manifest.isDemo && !autoOpened && !initial.dismissed) {
+      if (manifest.isDemo && selfGuided) {
+        // Remember the visitor's choice when they move to another page or
+        // refresh after the entry query string is no longer present.
+        window.localStorage.setItem(autoOpenKey, "true");
+      } else if (manifest.isDemo && !autoOpened && !initial.dismissed) {
         setMode("coachmark");
         setProgress((current) => ({
           ...current,
@@ -98,7 +104,7 @@ export function AppShell({
     } finally {
       setHydrated(true);
     }
-  }, [autoOpenKey, manifest, storageKey]);
+  }, [autoOpenKey, manifest, selfGuided, storageKey]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -175,6 +181,7 @@ export function AppShell({
 
   useEffect(() => {
     if (!hydrated) return;
+    if (selfGuided) return;
     const checkpoint = searchParams.get("checkpoint");
     if (!checkpoint) return;
     const stepId = checkpointTourStepId(checkpoint);
@@ -188,7 +195,7 @@ export function AppShell({
     if (manifest.isDemo && checkpointStep && !sameTourPath(pathname, checkpointStep.href)) {
       router.push(checkpointStep.href);
     }
-  }, [hydrated, manifest.isDemo, manifest.steps, pathname, router, searchParams]);
+  }, [hydrated, manifest.isDemo, manifest.steps, pathname, router, searchParams, selfGuided]);
 
   const completed = new Set([
     ...progress.completedStepIds,
