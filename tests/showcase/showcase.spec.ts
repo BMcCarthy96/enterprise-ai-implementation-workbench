@@ -59,6 +59,14 @@ test("public demo entry and dependency health are available", async ({ page, req
   expect(health.status()).toBe(200);
   expect((await health.json()).status).toBe("healthy");
 
+  const buildMetadata = await request.get("/api/build-metadata");
+  expect(buildMetadata.status()).toBe(200);
+  expect((await buildMetadata.json()).schemaVersion).toBe("1.0");
+
+  const robots = await request.get("/robots.txt");
+  expect(robots.status()).toBe(200);
+  expect(await robots.text()).toContain("Disallow: /demo");
+
   await page.goto("/demo?checkpoint=portfolio-health");
   await page.waitForURL("**/dashboard**");
   await expect(page.getByTestId("demo-role-bar")).toBeVisible();

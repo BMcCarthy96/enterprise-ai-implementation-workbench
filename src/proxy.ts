@@ -9,6 +9,7 @@ const PUBLIC_PATHS = [
   "/robots.txt",
   "/api/auth/login",
   "/api/auth/oidc",
+  "/api/build-metadata",
   "/api/demo/session",
   "/api/proof",
   "/api/scim",
