@@ -1,11 +1,11 @@
 # Multi-stage build producing a slim standalone image for App Runner / ECS.
 # The same image runs the web app (default CMD) or the worker (override CMD).
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -13,7 +13,7 @@ COPY . .
 # keep the framework's normal production output.
 RUN WORKBENCH_STANDALONE=1 npm run build
 
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
