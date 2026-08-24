@@ -6,6 +6,7 @@ const PUBLIC_PATHS = [
   "/login",
   "/demo",
   "/proof",
+  "/robots.txt",
   "/api/auth/login",
   "/api/auth/oidc",
   "/api/demo/session",

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { DemoLaunchButton } from "@/app/DemoLaunchButton";
 import {
   getProofManifest,
@@ -8,10 +9,11 @@ import {
   type ProofStatus,
 } from "@/lib/proof";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Technical evidence",
   description:
     "A technical evidence map for the Enterprise AI Implementation Workbench.",
+  alternates: { canonical: "/proof" },
 };
 
 const statusOrder: ProofStatus[] = ["ci_verified", "staging_observed", "implemented", "target", "planned"];

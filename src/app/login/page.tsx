@@ -1,7 +1,14 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { DemoLaunchButton } from "@/app/DemoLaunchButton";
 import { LoginForm } from "./LoginForm";
 import { env } from "@/lib/env";
+
+export const metadata: Metadata = {
+  title: "Sign in",
+  description: "Open an interactive demo or sign in to an existing Enterprise AI Implementation Workbench workspace.",
+  alternates: { canonical: "/login" },
+};
 
 export default function LoginPage() {
   const configuration = env();

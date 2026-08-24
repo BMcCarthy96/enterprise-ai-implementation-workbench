@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { PrintCaseStudyButton } from "@/app/PrintCaseStudyButton";
 import {
   getProofManifest,
@@ -6,9 +7,10 @@ import {
   type ProofStatus,
 } from "@/lib/proof";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Enterprise AI Workbench — case study",
   description: "Printable portfolio case study and evidence index.",
+  alternates: { canonical: "/proof/case-study" },
 };
 
 export default function CaseStudyPage() {
@@ -167,7 +169,7 @@ export default function CaseStudyPage() {
                             <li key={`${claim.id}-${item.label}`}>
                               <Link
                                 href={item.href}
-                                className="hover:underline"
+                                className="flex min-h-8 items-center rounded-sm py-1 leading-5 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
                               >
                                 {item.kind.toUpperCase()} · {item.label}
                               </Link>

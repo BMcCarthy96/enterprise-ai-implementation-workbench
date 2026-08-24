@@ -44,7 +44,7 @@ export default function Home() {
                   <TraceRow number="04" label="Human approval gate" detail="No task mutation before manager decision" tone="emerald" />
                 </div>
                 <div className="mt-5 grid grid-cols-3 gap-2"><MiniMetric label="COST" value="Not priced" /><MiniMetric label="LATENCY" value="2.35s fixture" /><MiniMetric label="CITATIONS" value="S1" /></div>
-                <p className="mt-3 text-[10px] leading-4 text-slate-500">Synthetic fixture telemetry demonstrates the evidence contract; no live-provider spend is claimed.</p>
+                <p className="mt-3 text-[10px] leading-4 text-slate-400">Synthetic fixture telemetry demonstrates the evidence contract; no live-provider spend is claimed.</p>
               </div>
             </div>
           </div>
