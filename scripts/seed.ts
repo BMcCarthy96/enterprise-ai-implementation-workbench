@@ -109,6 +109,16 @@ async function main() {
     })
     .returning();
 
+  // Customer access is an explicit assignment, not an inferred tenant-wide
+  // role. Keep the seeded stakeholder scoped to the Brightlane project so the
+  // demo exercises the same restricted path as a real customer account.
+  await db.insert(schema.customerAssignments).values({
+    orgId: northwind.id,
+    userId: userIds["customer@brightlane.dev"],
+    customerId: brightlane.id,
+    createdBy: admin,
+  });
+
   const [orderProject] = await db
     .insert(schema.projects)
     .values({

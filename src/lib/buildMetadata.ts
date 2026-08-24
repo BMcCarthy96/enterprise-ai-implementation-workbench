@@ -22,5 +22,11 @@ export function getBuildMetadata() {
     commit: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA ?? "local",
     buildTime: process.env.BUILD_TIME ?? null,
     evidenceVersion: "proof-manifest-v1",
+    evidence: {
+      commit: process.env.PROOF_EVIDENCE_SHA ?? null,
+      workflowRunUrl: process.env.PROOF_EVIDENCE_RUN_URL ?? null,
+      conclusion: process.env.PROOF_EVIDENCE_CONCLUSION ?? null,
+      verifiedAt: process.env.PROOF_EVIDENCE_VERIFIED_AT ?? null,
+    },
   } as const;
 }

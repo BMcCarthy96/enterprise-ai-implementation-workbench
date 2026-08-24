@@ -13,7 +13,7 @@ stack stay provisioned. Set `WORKBENCH_ENV_MODE=showcase` and
 
 - synthetic accounts only; never add personal or customer data;
 - public password login disabled; reviewers enter through expiring isolated demo sessions or configured enterprise SSO;
-- one live generation per isolated demo workspace;
+- two live generations per isolated demo workspace;
 - a short workspace TTL and the daily/monthly spend caps from `.env.example`;
 - `/api/health` as the liveness/readiness check;
 - CI proof metadata (`PROOF_EVIDENCE_SHA`, `PROOF_EVIDENCE_RUN_URL`) on the

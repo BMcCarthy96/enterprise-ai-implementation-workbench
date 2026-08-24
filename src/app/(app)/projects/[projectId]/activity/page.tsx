@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
@@ -14,9 +15,7 @@ export default async function ActivityPage({
   const { projectId } = await params;
   const session = (await getSession())!;
   if (!can(session.role, "internal.view")) {
-    return (
-      <EmptyState title="Not available" hint="You do not have access to the activity log." />
-    );
+    redirect(`/projects/${projectId}`);
   }
 
   const events = await withTenantTransaction(

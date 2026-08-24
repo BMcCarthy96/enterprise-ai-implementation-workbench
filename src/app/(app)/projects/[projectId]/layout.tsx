@@ -1,11 +1,12 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { ApiError } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ProjectBreadcrumb, ProjectTabs } from "./ProjectTabs";
-import { uuidParam } from "@/server/services/access";
+import { assertCustomerAccess, uuidParam } from "@/server/services/access";
 
 export default async function ProjectLayout({
   children,
@@ -20,8 +21,8 @@ export default async function ProjectLayout({
 
   const row = await withTenantTransaction(
     session.orgId,
-    () =>
-      db
+    async () => {
+      const rows = await db
         .select({
           project: schema.projects,
           customerName: schema.customers.name,
@@ -37,10 +38,30 @@ export default async function ProjectLayout({
             eq(schema.projects.orgId, session.orgId),
           ),
         )
-        .limit(1),
+        .limit(1);
+      if (rows[0]) {
+        try {
+          await assertCustomerAccess(session, rows[0].project.customerId);
+        } catch (error) {
+          // Treat an unassigned customer project exactly like a missing
+          // project at the page boundary. This keeps the response a real 404
+          // instead of surfacing an API error through the server component.
+          if (error instanceof ApiError && error.status === 404) return [];
+          throw error;
+        }
+      }
+      return rows;
+    },
     session.userId,
   );
-  if (row.length === 0) notFound();
+  if (row.length === 0) {
+    // A customer who guesses another project's UUID should land back on the
+    // scoped project list rather than receive a streamed shell with a 200
+    // status before Next can render its not-found boundary. Internal users
+    // still get the normal 404 for an unknown project.
+    if (session.role === "customer_stakeholder") redirect("/projects");
+    notFound();
+  }
   const { project, customerName } = row[0];
 
   const internal = can(session.role, "internal.view");

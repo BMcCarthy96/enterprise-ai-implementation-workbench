@@ -16,6 +16,13 @@ export default defineConfig({
   },
   webServer: {
     command: "npm run dev",
+    // Production keeps this allowance intentionally small. The browser suite
+    // opens many independent demo sessions in parallel, so use a test-only
+    // ceiling and keep the real quota behavior covered by unit tests.
+    env: {
+      DEMO_MAX_ACTIVE_WORKSPACES: "100",
+      DEMO_MAX_ACTIVE_PER_NETWORK: "100",
+    },
     url: "http://localhost:3000/login",
     reuseExistingServer: true,
     timeout: 120_000,

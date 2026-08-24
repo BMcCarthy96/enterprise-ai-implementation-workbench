@@ -7,6 +7,7 @@ import { can } from "@/lib/auth/rbac";
 import { uuidParam } from "@/server/services/access";
 import { getAiEvidencePacket, summarizeEvidence } from "@/server/services/aiEvidence";
 import { TOUR_TARGETS } from "@/lib/tour";
+import { CopyValueButton } from "@/components/CopyValueButton";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,7 @@ export default async function AiRunDetailPage({
           <span className="font-semibold text-slate-900">Data origin</span>
           <span className={`badge ${packet.run.dataOrigin === "fixture" ? "bg-slate-100 text-slate-700" : packet.run.dataOrigin === "mock_run" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>{packet.run.dataOrigin === "fixture" ? "Synthetic scenario" : packet.run.dataOrigin === "mock_run" ? "Deterministic mock run" : "Live provider run"}</span>
           <span className="text-slate-300">·</span>
-          <span className="min-w-0 break-all">Trace ID <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px]">{packet.run.id}</code></span>
+          <span className="flex min-w-0 flex-wrap items-center gap-2">Trace ID <code className="min-w-0 break-all rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px]">{packet.run.id}</code><CopyValueButton value={packet.run.id} label="Copy ID" /></span>
         </div>
 
         <div className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4 2xl:grid-cols-7">

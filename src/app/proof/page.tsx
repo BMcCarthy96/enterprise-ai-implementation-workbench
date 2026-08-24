@@ -9,7 +9,7 @@ import {
 } from "@/lib/proof";
 
 export const metadata = {
-  title: "Portfolio proof",
+  title: "Technical evidence",
   description:
     "A technical evidence map for the Enterprise AI Implementation Workbench.",
 };
@@ -44,9 +44,9 @@ export default function ProofPage() {
 
         <section className="grid gap-12 pb-16 pt-20 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
           <div>
-            <p className="eyebrow">Portfolio proof / evidence map</p>
-            <h1 className="mt-4 max-w-4xl text-5xl font-semibold leading-[1.03] tracking-[-0.04em] sm:text-6xl">A trustworthy AI workflow is easier to believe when every claim has a trail.</h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">This is the short path through the Workbench: a grounded plan, an explicit human checkpoint, visible delivery state, and enough operational evidence to discuss the tradeoffs honestly.</p>
+            <p className="eyebrow">Technical evidence</p>
+            <h1 className="mt-4 max-w-4xl text-5xl font-semibold leading-[1.03] tracking-[-0.04em] sm:text-6xl">See what the system checks and where the evidence comes from.</h1>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">This page links the main system claims to tests, source files, runbooks, and the interactive demo. It also marks which results came from fixtures and which ones were observed in a deployed environment.</p>
             <div className="mt-8 flex flex-wrap items-start gap-4"><DemoLaunchButton checkpoint="ai-evidence" /><Link href="/demo?checkpoint=ai-evidence" className="btn-ghost">Share this checkpoint</Link></div>
             <p className="mt-4 text-xs text-slate-400">Synthetic data only · isolated 60-minute demo · statuses below distinguish verified evidence from targets and planned work.</p>
           </div>
@@ -59,7 +59,7 @@ export default function ProofPage() {
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-400"><span>Mode · <strong className="font-medium text-slate-200">{manifest.build.deploymentMode}</strong></span><span>Provider · <strong className="font-medium text-slate-200">{manifest.build.providerMode}</strong></span><span>Database · <strong className="font-medium text-slate-200">{manifest.build.databaseMode}</strong></span><Link href="/api/build-metadata" className="text-cyan-200 hover:text-white">Machine metadata ↗</Link></div>
             <div className={`mt-4 rounded-xl border px-3 py-3 text-xs leading-5 ${manifest.provenance.currentBuildVerified ? "border-emerald-300/20 bg-emerald-300/5 text-emerald-100" : "border-amber-300/20 bg-amber-300/5 text-amber-100"}`}><p className="font-semibold">{manifest.provenance.currentBuildVerified ? "This deployed commit has matching successful CI provenance." : "CI provenance is not attached to this build."}</p><p className="mt-1 opacity-80">{manifest.provenance.reason}</p>{manifest.provenance.currentBuildVerified && manifest.provenance.workflowRunUrl && <Link href={manifest.provenance.workflowRunUrl} className="mt-2 inline-block text-cyan-200 hover:text-white">Open successful workflow run ↗</Link>}</div>
-            <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">The story in one minute</p><ol className="mt-3 space-y-2 text-sm text-slate-300"><li><span className="mr-2 font-mono text-cyan-300">01</span>Requirements become a cited, schema-validated proposal.</li><li><span className="mr-2 font-mono text-cyan-300">02</span>A manager decision is required before task mutation.</li><li><span className="mr-2 font-mono text-cyan-300">03</span>Delivery, customer updates, and failure recovery stay observable.</li></ol></div>
+            <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">Quick path</p><ol className="mt-3 space-y-2 text-sm text-slate-300"><li><span className="mr-2 font-mono text-cyan-300">01</span>Requirements become a cited plan draft.</li><li><span className="mr-2 font-mono text-cyan-300">02</span>A manager reviews the draft before tasks are created.</li><li><span className="mr-2 font-mono text-cyan-300">03</span>Delivery work, customer updates, and retries remain visible.</li></ol></div>
           </div>
         </section>
 
@@ -75,7 +75,7 @@ export default function ProofPage() {
         </section>
 
         <section aria-labelledby="review-lenses-heading" className="py-14">
-          <div className="max-w-2xl"><p className="eyebrow">Choose a review lens</p><h2 id="review-lenses-heading" className="mt-2 text-2xl font-semibold">Start with the engineering question you care about.</h2><p className="mt-3 leading-7 text-slate-400">Each path provisions an isolated workspace at the closest evidence checkpoint; the persona bar then exposes the normal role-gated surfaces.</p></div>
+          <div className="max-w-2xl"><p className="eyebrow">Pick a starting point</p><h2 id="review-lenses-heading" className="mt-2 text-2xl font-semibold">Open the part you want to inspect.</h2><p className="mt-3 leading-7 text-slate-400">Each link creates an isolated demo workspace and opens near the relevant screen. You can change roles from the persona bar at any time.</p></div>
           <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <ReviewLens title="Quick review" body="Follow the shortest path from seeded requirements to a governed delivery artifact." href="/demo?checkpoint=portfolio-health" />
             <ReviewLens title="AI system" body="Inspect retrieval, repair, validation, citations, origin, and the human decision." href="/demo?checkpoint=ai-evidence" />

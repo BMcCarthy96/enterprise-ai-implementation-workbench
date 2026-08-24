@@ -17,7 +17,7 @@ export function MobileNav({ groups, orgName, userName }: { groups: Array<{ label
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
   return (
-    <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur lg:hidden">
+    <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur lg:hidden" data-testid="mobile-nav">
       <div className="flex items-center justify-between gap-3">
         <Link href="/dashboard" className="flex min-w-0 items-center gap-2" onClick={() => setOpen(false)}>
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-300 text-[11px] font-black text-slate-950">EA</span>

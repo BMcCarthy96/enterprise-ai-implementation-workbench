@@ -16,7 +16,7 @@ export default function AppError({
 
   return (
     <div className="mx-auto flex min-h-[55vh] max-w-xl items-center justify-center">
-      <section className="card w-full p-7 text-center" role="alert">
+      <section className="card w-full p-7 text-center" role="alert" data-testid="app-error">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">Workspace error</p>
         <h1 className="mt-3 text-xl font-semibold text-slate-950">We could not load this view</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">Retry the request, or continue from a stable workspace surface. Unsaved changes were not applied.</p>

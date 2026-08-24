@@ -17,11 +17,18 @@ import {
 
 export { DEMO_ESTIMATED_RESERVATION_USD, DEMO_TTL_SECONDS } from "@/server/services/demoConfig";
 
-export const DEMO_MAX_ACTIVE = 20;
 function configuredPositiveNumber(name: string, fallback: number): number {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
+export const DEMO_MAX_ACTIVE = Math.max(
+  1,
+  Math.floor(configuredPositiveNumber("DEMO_MAX_ACTIVE_WORKSPACES", 20)),
+);
+export const DEMO_MAX_ACTIVE_PER_NETWORK = Math.max(
+  1,
+  Math.floor(configuredPositiveNumber("DEMO_MAX_ACTIVE_PER_NETWORK", 4)),
+);
 const DEMO_MAX_DAILY_SPEND_USD = configuredPositiveNumber(
   "DEMO_MAX_DAILY_SPEND_USD",
   1,
@@ -200,11 +207,15 @@ export function hashDemoVisitorKey(visitorKey: string): string {
     .digest("hex");
 }
 
-export async function createDemoWorkspace(visitorKey: string): Promise<{
+export async function createDemoWorkspace(
+  visitorKey: string,
+  networkKey = visitorKey,
+): Promise<{
   workspace: typeof schema.demoWorkspaces.$inferSelect;
   token: string;
 }> {
   const ipHash = hashDemoVisitorKey(visitorKey);
+  const networkHash = hashDemoVisitorKey(networkKey);
   const now = new Date();
   const existing = await dbAdmin.query.demoWorkspaces.findFirst({
     where: and(
@@ -226,8 +237,24 @@ export async function createDemoWorkspace(visitorKey: string): Promise<{
     );
   }
 
+  const networkActive = await dbAdmin.$count(
+    schema.demoWorkspaces,
+    and(
+      eq(schema.demoWorkspaces.networkHash, networkHash),
+      gt(schema.demoWorkspaces.expiresAt, now),
+    ),
+  );
+  if (networkActive >= DEMO_MAX_ACTIVE_PER_NETWORK) {
+    throw new ApiError(
+      429,
+      "Too many active demo sessions are using this network; try again shortly",
+      "DEMO_NETWORK_LIMIT_REACHED",
+    );
+  }
+
   return provisionDemoWorkspace(
     ipHash,
+    networkHash,
     new Date(now.getTime() + DEMO_TTL_SECONDS * 1000),
   );
 }
@@ -235,6 +262,7 @@ export async function createDemoWorkspace(visitorKey: string): Promise<{
 /** Provision a fresh isolated workspace without consulting the visitor cap. */
 async function provisionDemoWorkspace(
   ipHash: string,
+  networkHash: string,
   expiresAt: Date,
 ): Promise<{
   workspace: typeof schema.demoWorkspaces.$inferSelect;
@@ -439,8 +467,9 @@ Brightlane wants a controlled order intake workflow for approved source systems.
         orgId,
         userId,
         ipHash,
+        networkHash,
         expiresAt,
-        // Public workspaces allow a small number of live generations;
+        // Public workspaces allow two live generations;
         // seeded evidence keeps the rest of the guided walkthrough instant.
         maxGenerationJobs: DEMO_MAX_GENERATION_JOBS,
       });
@@ -462,6 +491,15 @@ Brightlane wants a controlled order intake workflow for approved source systems.
           primaryContactEmail: "dana.whitfield@harborhealth.example",
         },
       ]);
+      // The customer persona is intentionally scoped to one account. This
+      // keeps the public demo useful without exposing the whole seeded
+      // portfolio when the persona changes.
+      await tx.insert(schema.customerAssignments).values({
+        orgId,
+        userId: personaUserIds.customer_stakeholder,
+        customerId,
+        createdBy: userId,
+      });
       await tx.insert(schema.projects).values([
         {
           id: projectId,
@@ -1209,6 +1247,7 @@ export async function replaceDemoWorkspace(input: {
   orgId: string;
   userId: string;
   visitorKey: string;
+  networkKey?: string;
 }): Promise<{
   workspace: typeof schema.demoWorkspaces.$inferSelect;
   token: string;
@@ -1256,8 +1295,26 @@ export async function replaceDemoWorkspace(input: {
     );
   }
 
+  const networkHash = hashDemoVisitorKey(input.networkKey ?? input.visitorKey);
+  const networkActive = await dbAdmin.$count(
+    schema.demoWorkspaces,
+    and(
+      eq(schema.demoWorkspaces.networkHash, networkHash),
+      gt(schema.demoWorkspaces.expiresAt, now),
+      ne(schema.demoWorkspaces.id, current.id),
+    ),
+  );
+  if (networkActive >= DEMO_MAX_ACTIVE_PER_NETWORK) {
+    throw new ApiError(
+      429,
+      "Too many active demo sessions are using this network; try again shortly",
+      "DEMO_NETWORK_LIMIT_REACHED",
+    );
+  }
+
   const replacement = await provisionDemoWorkspace(
     hashDemoVisitorKey(input.visitorKey),
+    networkHash,
     new Date(now.getTime() + DEMO_TTL_SECONDS * 1000),
   );
 

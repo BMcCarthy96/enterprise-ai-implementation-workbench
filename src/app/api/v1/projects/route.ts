@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { withAuth, parseBody, ApiError } from "@/lib/api";
 import { CreateProjectSchema } from "@/lib/apiSchemas";
 import { recordAudit } from "@/server/services/audit";
+import { assignedCustomerIds } from "@/server/services/access";
 
 export const GET = withAuth(null, async (_req, { session }) => {
+  const customerIds = await assignedCustomerIds(session);
   const rows = await db
     .select({
       project: schema.projects,
@@ -16,7 +18,16 @@ export const GET = withAuth(null, async (_req, { session }) => {
       schema.customers,
       eq(schema.projects.customerId, schema.customers.id),
     )
-    .where(eq(schema.projects.orgId, session.orgId))
+    .where(
+      and(
+        eq(schema.projects.orgId, session.orgId),
+        customerIds === null
+          ? undefined
+          : customerIds.length > 0
+            ? inArray(schema.projects.customerId, customerIds)
+            : sql`false`,
+      ),
+    )
     .orderBy(desc(schema.projects.createdAt));
   return NextResponse.json({
     projects: rows.map((r) => ({ ...r.project, customerName: r.customerName })),

@@ -13,7 +13,7 @@ The local/cloud switch remains configuration-only: remove `AWS_ENDPOINT_URL`, us
 
 1. An AWS account with MFA and an IAM Identity Center profile (do not use the root user).
 2. Bedrock model access enabled in one region for the selected Claude and Titan models.
-3. A Neon project with the `vector` extension enabled. Use a pooled connection for `DATABASE_URL` and the direct connection for `DATABASE_ADMIN_URL`.
+3. A Neon project with the `vector` extension enabled. Create a separate login role named `workbench_runtime`. Use that role's pooled connection for `DATABASE_URL` and the owner role's direct connection for `DATABASE_ADMIN_URL`.
 4. Node 22+, Docker Desktop, and the AWS CLI/CDK bootstrap permissions.
 
 Pick one region and keep Neon, S3, SQS, and Bedrock aligned to it where applicable (the default is `us-east-1`).
@@ -73,7 +73,9 @@ $env:DATABASE_ADMIN_URL="postgres://admin:..."
 npm run db:migrate
 ```
 
-After migrations, provision grants and forced RLS for the pre-created runtime role:
+Create the `workbench_runtime` role in Neon before deploying and save its pooled
+connection string. After migrations, provision grants and forced RLS for that
+role:
 
 ```bash
 psql "$DATABASE_ADMIN_URL" -v runtime_role=workbench_runtime -f scripts/provision-runtime-role.sql
@@ -114,7 +116,7 @@ The complete public showcase sequence is in
 | Postgres | Docker `pgvector/pg16` on `:5433` | Neon pooled runtime + direct admin URL | Environment only |
 | Object storage | LocalStack S3 | Private encrypted S3 | Environment only |
 | Jobs | LocalStack SQS + DLQ | SQS + DLQ + Lambda event source | Same `processJob` path |
-| Dispatch repair | Worker poll-loop reconciliation | One-minute EventBridge + Lambda reconciliation | Same `dispatchUndeliveredJobs` service |
+| Dispatch repair | Worker poll-loop reconciliation | One-minute EventBridge + Lambda reconciliation | Undelivered jobs, expired leases, and regeneration intents use the same repair path |
 | Plan model | Deterministic mock | Bedrock Claude Converse | `AI_PROVIDER` |
 | Embeddings | Deterministic mock vectors | Bedrock Titan Text Embeddings v2 | `EMBEDDING_PROVIDER` |
 | Demo cleanup | Service call | Scheduled Lambda + S3 prefix cleanup | Same service |
@@ -137,11 +139,14 @@ For the web runtime, register the Next.js instrumentation entrypoint and send
 OTLP to a Vercel-compatible collector when available. The shared worker also
 registers the OpenTelemetry SDK when `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (or
 `WORKBENCH_OTEL_ENABLED=true`) is present, so local worker spans and the
-SQS-triggered Lambda path use the same trace names. CloudWatch/X-Ray remain the
-authoritative AWS runtime view; the persisted job trace context joins both
-sides without putting tenant ids or content in telemetry.
+SQS-triggered Lambda path use the same trace names. The observability compose
+profile provisions Prometheus, Tempo, and a small Grafana dashboard at
+`http://localhost:3001` so the trace path is visible during a local walkthrough.
+CloudWatch/X-Ray remain the authoritative AWS runtime view; the persisted job
+trace context joins both sides without putting tenant ids or content in
+telemetry.
 
-Public demo guardrails are intentionally conservative: one live generation per
+Public demo guardrails are intentionally conservative: two live generations per
 isolated workspace, a one-dollar daily application cap, and the existing
 fifteen-dollar monthly AWS budget. Seeded evidence remains the fallback when a
 provider circuit breaker is open.
@@ -155,4 +160,4 @@ provider circuit breaker is open.
 - The cleanup Lambda removes expired demo organizations and their exact `orgs/{orgId}/` object prefixes hourly.
 - Keep the $15 budget and email thresholds enabled; Bedrock is pay-per-token and Neon/S3/SQS are usage-based.
 
-The trust-boundary details, redaction behavior, RLS assumptions, and explicit non-goals are in [security.md](security.md). The repeatable 90-second walkthrough is in [recruiter-demo-script.md](recruiter-demo-script.md) (titled **Guided walkthrough**).
+The trust-boundary details, redaction behavior, RLS assumptions, and explicit non-goals are in [security.md](security.md). The repeatable walkthrough is in [demo-walkthrough.md](demo-walkthrough.md).

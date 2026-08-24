@@ -1,7 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, lte, ne, or } from "drizzle-orm";
 import { db, dbAdmin, schema } from "@/db";
 import { ApiError } from "@/lib/api";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
@@ -197,6 +197,9 @@ export async function deliverWebhookJob(job: { orgId: string; payload?: unknown 
   if (!deliveryId) throw new Error("Webhook delivery job is missing deliveryId");
   const delivery = await dbAdmin.query.webhookDeliveries.findFirst({ where: and(eq(schema.webhookDeliveries.id, deliveryId), eq(schema.webhookDeliveries.orgId, job.orgId)) });
   if (!delivery) return;
+  // SQS can deliver the same job more than once. A delivered row is terminal;
+  // returning here avoids sending a second signed request to the customer.
+  if (delivery.status === "delivered") return;
   const endpoint = await dbAdmin.query.webhookEndpoints.findFirst({ where: and(eq(schema.webhookEndpoints.id, delivery.endpointId), eq(schema.webhookEndpoints.orgId, job.orgId)) });
   if (!endpoint || !endpoint.enabled) return;
   const url = validateWebhookUrl(endpoint.url);
@@ -206,14 +209,40 @@ export async function deliverWebhookJob(job: { orgId: string; payload?: unknown 
   const secret = decryptSecret(endpoint.secretCiphertext, endpoint.orgId + ":webhook:" + endpoint.id);
   const signature = createHmac("sha256", secret).update(timestamp + "." + body).digest("hex");
   const attempts = delivery.attempts + 1;
-  await dbAdmin.update(schema.webhookDeliveries).set({ status: "delivering", attempts, lastError: null }).where(eq(schema.webhookDeliveries.id, delivery.id));
+  const now = new Date();
+  const claimExpiresAt = new Date(now.getTime() + 60_000);
+  const [claimed] = await dbAdmin
+    .update(schema.webhookDeliveries)
+    .set({ status: "delivering", attempts, claimExpiresAt, lastError: null })
+    .where(
+      and(
+        eq(schema.webhookDeliveries.id, delivery.id),
+        ne(schema.webhookDeliveries.status, "delivered"),
+        or(
+          and(
+            eq(schema.webhookDeliveries.status, "queued"),
+            or(isNull(schema.webhookDeliveries.nextAttemptAt), lte(schema.webhookDeliveries.nextAttemptAt, now)),
+          ),
+          and(
+            eq(schema.webhookDeliveries.status, "failed"),
+            or(isNull(schema.webhookDeliveries.nextAttemptAt), lte(schema.webhookDeliveries.nextAttemptAt, now)),
+          ),
+          and(
+            eq(schema.webhookDeliveries.status, "delivering"),
+            or(isNull(schema.webhookDeliveries.claimExpiresAt), lte(schema.webhookDeliveries.claimExpiresAt, now)),
+          ),
+        ),
+      ),
+    )
+    .returning({ id: schema.webhookDeliveries.id });
+  if (!claimed) return;
   try {
     const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "user-agent": "Enterprise-AI-Workbench/1.0", "x-workbench-event-id": String(delivery.eventId), "x-workbench-signature": "t=" + timestamp + ",v1=" + signature }, body, redirect: "error", signal: AbortSignal.timeout(5000) });
     const responseBody = await readBoundedResponse(response);
     if (!response.ok) throw new Error("Webhook returned HTTP " + response.status);
-    await dbAdmin.update(schema.webhookDeliveries).set({ status: "delivered", responseStatus: response.status, responseBody, deliveredAt: new Date(), nextAttemptAt: null }).where(eq(schema.webhookDeliveries.id, delivery.id));
+    await dbAdmin.update(schema.webhookDeliveries).set({ status: "delivered", responseStatus: response.status, responseBody, deliveredAt: new Date(), nextAttemptAt: null, claimExpiresAt: null }).where(and(eq(schema.webhookDeliveries.id, delivery.id), eq(schema.webhookDeliveries.status, "delivering"), eq(schema.webhookDeliveries.claimExpiresAt, claimExpiresAt)));
   } catch (error) {
-    await dbAdmin.update(schema.webhookDeliveries).set({ status: "failed", lastError: error instanceof Error ? error.message : String(error), nextAttemptAt: new Date(Date.now() + Math.min(900, 5 * 2 ** Math.max(attempts - 1, 0)) * 1000) }).where(eq(schema.webhookDeliveries.id, delivery.id));
+    await dbAdmin.update(schema.webhookDeliveries).set({ status: "failed", lastError: error instanceof Error ? error.message : String(error), nextAttemptAt: new Date(Date.now() + Math.min(900, 5 * 2 ** Math.max(attempts - 1, 0)) * 1000), claimExpiresAt: null }).where(and(eq(schema.webhookDeliveries.id, delivery.id), eq(schema.webhookDeliveries.status, "delivering"), eq(schema.webhookDeliveries.claimExpiresAt, claimExpiresAt)));
     throw error;
   }
 }

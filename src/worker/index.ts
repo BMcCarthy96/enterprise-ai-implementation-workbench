@@ -12,6 +12,7 @@ import {
   reclaimExpiredJobs,
 } from "@/server/services/jobs";
 import { recordAudit } from "@/server/services/audit";
+import { reconcileRegenerationIntents } from "@/server/services/approvals";
 import { runPlanGenerationJob } from "@/server/services/planGeneration";
 import { runDigestJob } from "@/server/services/digest";
 import {
@@ -458,6 +459,8 @@ async function main() {
       if (repaired.dispatched) {
         log.info(repaired, "repaired undelivered job pointers");
       }
+      const regenerated = await reconcileRegenerationIntents();
+      if (regenerated) log.info({ regenerated }, "dispatched regeneration intents");
       const messages = await receiveJobs(10);
       for (const message of messages) {
         if (!message.Body || !message.ReceiptHandle) continue;

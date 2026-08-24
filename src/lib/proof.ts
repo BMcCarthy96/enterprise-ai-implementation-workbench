@@ -112,9 +112,19 @@ export const proofClaims: ProofClaim[] = [
         href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/tests/unit/access.test.ts",
       },
       {
+        kind: "test",
+        label: "Cross-tenant browser proof",
+        href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/tests/e2e/workbench.spec.ts",
+      },
+      {
         kind: "runbook",
         label: "Security boundaries",
         href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/docs/security.md",
+      },
+      {
+        kind: "artifact",
+        label: "Customer assignment RLS migration",
+        href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/drizzle/0019_customer_assignments.sql",
       },
       {
         kind: "demo",
@@ -140,6 +150,11 @@ export const proofClaims: ProofClaim[] = [
         kind: "test",
         label: "Job reliability tests",
         href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/tests/unit/jobs.test.ts",
+      },
+      {
+        kind: "test",
+        label: "Fenced worker implementation",
+        href: "https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/blob/main/src/worker/index.ts",
       },
       {
         kind: "runbook",

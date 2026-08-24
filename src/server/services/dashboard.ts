@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { computeAiQuality, type AiCallRow, type AiRunRow } from "./insights";
 import { getDeliveryRisks, type ProjectRisk, type RiskLevel } from "./sla";
@@ -120,12 +120,37 @@ function projectRisk(risks: ProjectRisk[], projectId: string): ProjectRisk | und
 }
 
 /** Tenant-scoped dashboard read model. Every source query is filtered by org. */
-export async function getDashboardSnapshot(orgId: string, isInternal: boolean): Promise<DashboardSnapshot> {
+export async function getDashboardSnapshot(
+  orgId: string,
+  isInternal: boolean,
+  userId?: string,
+  role?: string,
+): Promise<DashboardSnapshot> {
+  const customerIds =
+    !isInternal && userId && role === "customer_stakeholder"
+      ? (
+          await db
+            .select({ customerId: schema.customerAssignments.customerId })
+            .from(schema.customerAssignments)
+            .where(
+              and(
+                eq(schema.customerAssignments.orgId, orgId),
+                eq(schema.customerAssignments.userId, userId),
+              ),
+            )
+        ).map((row) => row.customerId)
+      : null;
   const projects = await db
     .select({ project: schema.projects, customerName: schema.customers.name })
     .from(schema.projects)
     .innerJoin(schema.customers, eq(schema.projects.customerId, schema.customers.id))
-    .where(eq(schema.projects.orgId, orgId))
+    .where(
+      customerIds === null
+        ? eq(schema.projects.orgId, orgId)
+        : customerIds.length > 0
+          ? and(eq(schema.projects.orgId, orgId), inArray(schema.projects.customerId, customerIds))
+          : sql`false`,
+    )
     .orderBy(desc(schema.projects.updatedAt));
   const tasks = await db.query.tasks.findMany({ where: eq(schema.tasks.orgId, orgId) });
   const milestones = await db.query.milestones.findMany({ where: eq(schema.milestones.orgId, orgId) });
@@ -140,24 +165,43 @@ export async function getDashboardSnapshot(orgId: string, isInternal: boolean): 
   aiRuns.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const delivery = isInternal ? await getDeliveryRisks(orgId) : { risks: [], counts: { breached: 0, atRisk: 0 } };
   const projectNames = new Map(projects.map(({ project, customerName }) => [project.id, { name: project.name, customerName }]));
-  const planById = new Map(plans.map((plan) => [plan.id, plan]));
-  const updateRows = await db.query.customerUpdates.findMany({ where: eq(schema.customerUpdates.orgId, orgId), columns: { id: true, title: true } });
-  const updateById = new Map(updateRows.map((update) => [update.id, update.title]));
+  const visibleProjectIds = new Set(projects.map(({ project }) => project.id));
+  // The dashboard read model intentionally keeps the source queries simple,
+  // then applies the same project scope to every child collection. This avoids
+  // leaking counts or activity from an unassigned customer account.
+  const scopedTasks = tasks.filter((task) => visibleProjectIds.has(task.projectId));
+  const scopedMilestones = milestones.filter((milestone) => visibleProjectIds.has(milestone.projectId));
+  const scopedPlans = plans.filter((plan) => visibleProjectIds.has(plan.projectId));
+  const scopedApprovals = approvals.filter((approval) => isInternal || (approval.projectId !== null && visibleProjectIds.has(approval.projectId)));
+  const scopedJobs = jobs.filter((job) => isInternal || (job.projectId !== null && visibleProjectIds.has(job.projectId)));
+  const scopedAiRuns = aiRuns.filter((run) => isInternal || (run.projectId !== null && visibleProjectIds.has(run.projectId)));
+  const visibleAiRunIds = new Set(scopedAiRuns.map((run) => run.id));
+  const scopedAiCalls = aiCalls.filter((call) => visibleAiRunIds.has(call.aiRunId));
+  const scopedEvaluations = aiEvaluations.filter((evaluation) => visibleAiRunIds.has(evaluation.aiRunId));
+  const planById = new Map(scopedPlans.map((plan) => [plan.id, plan]));
+  const updateRows = await db.query.customerUpdates.findMany({ where: eq(schema.customerUpdates.orgId, orgId), columns: { id: true, title: true, projectId: true } });
+  const scopedUpdates = updateRows.filter((update) => isInternal || visibleProjectIds.has(update.projectId));
+  const updateById = new Map(scopedUpdates.map((update) => [update.id, update.title]));
   const now = new Date();
 
   const projectHealth = projects.map(({ project, customerName }) => {
-    const projectTasks = tasks.filter((task) => task.projectId === project.id);
+    const projectTasks = scopedTasks.filter((task) => task.projectId === project.id);
     const progress = calculateCompletion(projectTasks);
-    const nextMilestone = milestones
+    const nextMilestone = scopedMilestones
       .filter((milestone) => milestone.projectId === project.id && milestone.status !== "complete")
       .sort((a, b) => a.sortOrder - b.sortOrder)[0]?.name ?? null;
     const risk = projectRisk(delivery.risks, project.id);
-    const projectPlans = plans.filter((plan) => plan.projectId === project.id).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const projectPlans = scopedPlans.filter((plan) => plan.projectId === project.id).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     const latestPlan = projectPlans[0];
     const blocked = projectTasks.some((task) => task.status === "blocked");
     let nextAction = "Review project overview";
     let nextActionHref = `/projects/${project.id}`;
-    if (!latestPlan) {
+    if (!isInternal) {
+      // Customer stakeholders get a useful next step without being pointed at
+      // internal plan, approval, or delivery routes.
+      nextAction = "View project status";
+      nextActionHref = `/projects/${project.id}/timeline`;
+    } else if (!latestPlan) {
       nextAction = "Generate implementation plan";
       nextActionHref = `/projects/${project.id}/plan`;
     } else if (latestPlan.status === "pending_approval") {
@@ -188,7 +232,7 @@ export async function getDashboardSnapshot(orgId: string, isInternal: boolean): 
     } satisfies DashboardProjectHealth;
   });
 
-  const pendingApprovals = approvals.filter((approval) => approval.status === "pending");
+  const pendingApprovals = scopedApprovals.filter((approval) => approval.status === "pending");
   const approvalItems: DashboardApproval[] = pendingApprovals.slice(0, 8).map((approval) => {
     const project = approval.projectId ? projectNames.get(approval.projectId) : undefined;
     const subject = approval.subjectType === "plan" ? planById.get(approval.subjectId)?.summary : updateById.get(approval.subjectId);
@@ -203,14 +247,14 @@ export async function getDashboardSnapshot(orgId: string, isInternal: boolean): 
       href: "/approvals",
     };
   });
-  const blockedTasks = tasks.filter((task) => task.status === "blocked").sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime()).slice(0, 6).map((task) => ({
+  const blockedTasks = scopedTasks.filter((task) => task.status === "blocked").sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime()).slice(0, 6).map((task) => ({
     id: task.id,
     title: task.title,
     projectName: projectNames.get(task.projectId)?.name ?? "Project",
     updatedAt: task.updatedAt,
     href: `/projects/${task.projectId}/board`,
   }));
-  const failedJobs = jobs.filter((job) => ["failed", "dead_letter"].includes(job.status)).slice(0, 6).map((job) => ({
+  const failedJobs = scopedJobs.filter((job) => ["failed", "dead_letter"].includes(job.status)).slice(0, 6).map((job) => ({
     id: job.id,
     type: statusLabel(job.type),
     projectName: job.projectId ? projectNames.get(job.projectId)?.name ?? "Project" : "Organization",
@@ -222,17 +266,17 @@ export async function getDashboardSnapshot(orgId: string, isInternal: boolean): 
   const kpis: DashboardKpi[] = [
     { id: "projects", label: "Active projects", value: projectHealth.filter((project) => ["discovery", "planning", "in_delivery"].includes(project.status)).length, context: `${delivery.counts.breached} breached · ${delivery.counts.atRisk} at risk`, href: "/projects", tone: delivery.counts.breached ? "rose" : "cyan" },
     { id: "approvals", label: "Pending approvals", value: pendingApprovals.length, context: pendingApprovals.length ? `${approvalItems[0]?.ageLabel ?? "Needs review"}` : "Queue is clear", href: "/approvals", tone: pendingApprovals.length ? "amber" : "emerald" },
-    { id: "tasks", label: "Open tasks", value: tasks.filter((task) => task.status !== "done").length, context: `${blockedTasks.length} blocked · ${tasks.filter((task) => task.status === "in_review").length} in review`, href: "/projects", tone: blockedTasks.length ? "rose" : "cyan" },
+    { id: "tasks", label: "Open tasks", value: scopedTasks.filter((task) => task.status !== "done").length, context: `${blockedTasks.length} blocked · ${scopedTasks.filter((task) => task.status === "in_review").length} in review`, href: "/projects", tone: blockedTasks.length ? "rose" : "cyan" },
     { id: "jobs", label: "Failed jobs", value: failedJobs.length, context: failedJobs.some((job) => job.status === "dead_letter") ? "Dead-letter recovery available" : "No dead letters", href: "/ops", tone: failedJobs.length ? "rose" : "emerald" },
   ];
 
-  const planRunRows: AiRunRow[] = aiRuns.map((run) => ({ artifactType: run.artifactType, status: run.status, finalOutcome: run.finalOutcome, costUsd: run.costUsd, latencyMs: run.latencyMs }));
-  const callRows: AiCallRow[] = aiCalls.map((call) => ({ operation: call.operation, outcome: call.outcome }));
-  const aiQuality = computeAiQuality({ runs: planRunRows, calls: callRows, approvedPlanCount: plans.filter((plan) => ["approved", "superseded"].includes(plan.status)).length });
-  const latestPlanRun = aiRuns.find((run) => run.artifactType === "plan");
-  const planRunIds = new Set(aiRuns.filter((run) => run.artifactType === "plan").map((run) => run.id));
-  const evaluationByRun = new Map<string, typeof aiEvaluations>();
-  for (const evaluation of aiEvaluations) {
+  const planRunRows: AiRunRow[] = scopedAiRuns.map((run) => ({ artifactType: run.artifactType, status: run.status, finalOutcome: run.finalOutcome, costUsd: run.costUsd, latencyMs: run.latencyMs }));
+  const callRows: AiCallRow[] = scopedAiCalls.map((call) => ({ operation: call.operation, outcome: call.outcome }));
+  const aiQuality = computeAiQuality({ runs: planRunRows, calls: callRows, approvedPlanCount: scopedPlans.filter((plan) => ["approved", "superseded"].includes(plan.status)).length });
+  const latestPlanRun = scopedAiRuns.find((run) => run.artifactType === "plan");
+  const planRunIds = new Set(scopedAiRuns.filter((run) => run.artifactType === "plan").map((run) => run.id));
+  const evaluationByRun = new Map<string, typeof scopedEvaluations>();
+  for (const evaluation of scopedEvaluations) {
     if (!planRunIds.has(evaluation.aiRunId)) continue;
     const rows = evaluationByRun.get(evaluation.aiRunId) ?? [];
     rows.push(evaluation);
@@ -273,7 +317,7 @@ export async function getDashboardSnapshot(orgId: string, isInternal: boolean): 
     isInternal,
     kpis: isInternal ? kpis : [{ id: "projects", label: "Projects", value: projectHealth.length, context: "Your implementation portfolio", href: "/projects", tone: "cyan" }],
     projects: projectHealth,
-    taskBreakdown: buildTaskBreakdown(tasks),
+    taskBreakdown: buildTaskBreakdown(scopedTasks),
     approvals: isInternal ? approvalItems : [],
     blockedTasks: isInternal ? blockedTasks : [],
     failedJobs: isInternal ? failedJobs : [],

@@ -17,7 +17,7 @@ type Params = { projectId: string };
 export const POST = withAuth<Params>(
   "documents.upload",
   async (req, { session }, params) => {
-    const project = await requireProject(params.projectId, session.orgId);
+    const project = await requireProject(params.projectId, session.orgId, session.userId, session.role);
     const body = await parseBody(req, PresignDocumentSchema);
     if (session.demoWorkspaceId) {
       if (body.sizeBytes > 5 * 1024 * 1024) {

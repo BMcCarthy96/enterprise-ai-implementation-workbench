@@ -31,6 +31,10 @@ on:
         description: Exact Vercel project name used by the OIDC trust policy
         required: true
         default: enterprise-ai-implementation-workbench
+      runtime-role:
+        description: PostgreSQL role used by the web and worker runtime
+        required: true
+        default: workbench_runtime
 
 permissions:
   contents: read
@@ -70,6 +74,20 @@ jobs:
             exit 1
           fi
           npm run db:migrate
+
+      - name: Provision runtime role grants and forced RLS
+        env:
+          DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
+          RUNTIME_ROLE: ${{ inputs['runtime-role'] }}
+        run: |
+          psql "$DATABASE_ADMIN_URL" -v runtime_role="$RUNTIME_ROLE" -f scripts/provision-runtime-role.sql
+
+      - name: Verify runtime role and forced RLS
+        env:
+          DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
+          RUNTIME_ROLE: ${{ inputs['runtime-role'] }}
+        run: |
+          psql "$DATABASE_ADMIN_URL" -v runtime_role="$RUNTIME_ROLE" -f scripts/check-runtime-role.sql
 
       - name: Deploy
         working-directory: infra

@@ -7,12 +7,12 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
-  // Keep framework chrome out of recruiter screenshots and interactive controls.
+  // Keep framework chrome out of demo screenshots and interactive controls.
   // Compile/runtime errors still surface in the terminal and Next.js overlay.
   devIndicators: false,
-  // Let Vercel use its native Next.js output adapter. Container/App Runner
-  // builds still get the standalone bundle they need.
-  output: process.env.VERCEL ? undefined : "standalone",
+  // Local production runs and Vercel use the normal Next.js output. Container
+  // builds opt into the smaller standalone bundle in the Dockerfile.
+  output: process.env.WORKBENCH_STANDALONE === "1" ? "standalone" : undefined,
 };
 
 export default nextConfig;

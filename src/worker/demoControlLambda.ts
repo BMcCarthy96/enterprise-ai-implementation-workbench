@@ -13,6 +13,7 @@ import { ApiError } from "@/lib/api";
 export interface DemoControlEvent {
   operation: "create" | "switch" | "reset" | "reserve" | "reconcile";
   visitorKey?: string;
+  networkKey?: string;
   sessionToken?: string;
   role?: Role;
   returnTo?: string | null;
@@ -47,6 +48,7 @@ function parseEvent(value: unknown): DemoControlEvent {
   return {
     operation,
     visitorKey: typeof event?.visitorKey === "string" ? event.visitorKey : undefined,
+    networkKey: typeof event?.networkKey === "string" ? event.networkKey : undefined,
     sessionToken: typeof event?.sessionToken === "string" ? event.sessionToken : undefined,
     role: role as Role | undefined,
     returnTo: typeof event?.returnTo === "string" ? event.returnTo : null,
@@ -74,7 +76,7 @@ export async function handler(event: unknown): Promise<DemoControlResult> {
         if (!input.visitorKey) {
           throw new ApiError(400, "A demo visitor key is required", "DEMO_VISITOR_REQUIRED");
         }
-        return { ok: true, data: await createDemoWorkspace(input.visitorKey) };
+        return { ok: true, data: await createDemoWorkspace(input.visitorKey, input.networkKey) };
       case "switch": {
         const session = await authenticatedDemoSession(input);
         if (!input.role) {
@@ -103,6 +105,7 @@ export async function handler(event: unknown): Promise<DemoControlResult> {
             orgId: session.orgId,
             userId: session.userId,
             visitorKey: input.visitorKey,
+            networkKey: input.networkKey,
           }),
         };
       }

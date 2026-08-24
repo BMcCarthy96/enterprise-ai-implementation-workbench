@@ -44,6 +44,16 @@ async function openProjectSection(page: Page, label: "Plan" | "Delivery") {
   await tab.click();
 }
 
+async function reloadAfterDecision(page: Page) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
+    if (!(await page.getByTestId("app-error").isVisible().catch(() => false))) return;
+    await page.getByRole("button", { name: "Retry" }).click().catch(() => undefined);
+    await page.waitForTimeout(1000);
+  }
+  await expect(page.getByTestId("app-error")).toBeHidden();
+}
+
 test("public demo entry and dependency health are available", async ({ page, request }) => {
   const health = await request.get("/api/health");
   expect(health.status()).toBe(200);
@@ -77,13 +87,23 @@ test("hosted worker completes generate, approve, and materialize", async ({ page
   const card = page.locator("div.card", { hasText: "Patient Onboarding Portal" });
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: "Approve", exact: true }).first().click();
-  // The recent-decision card also renders the approval subject and note, so
-  // a broad /approved/i locator is ambiguous after the queue refreshes. The
-  // exact status badge is the signal this flow is proving.
-  await expect(card.getByText("approved", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Approved. The delivery view will update shortly.", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await reloadAfterDecision(page);
+  await expect(page.getByText("approved", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
 
   await page.goto("/projects");
   await page.getByRole("link", { name: "Patient Onboarding Portal", exact: true }).click();
   await openProjectSection(page, "Delivery");
   await expect(page.getByText("Run kickoff workshop").first()).toBeVisible({ timeout: 30_000 });
+});
+
+test("customer persona is limited to its assigned project", async ({ page }) => {
+  await page.goto("/demo?checkpoint=portfolio-health");
+  await page.waitForURL("**/dashboard**");
+  await closeGuide(page);
+  await selectPersona(page, "customer_stakeholder");
+  await page.goto("/projects");
+  await expect(page.getByRole("link", { name: "Order Intake Automation", exact: true })).toBeVisible();
+  await expect(page.getByText("Claims Status Tracker", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Patient Onboarding Portal", { exact: true })).toHaveCount(0);
 });

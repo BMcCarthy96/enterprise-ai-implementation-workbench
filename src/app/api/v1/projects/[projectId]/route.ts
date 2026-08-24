@@ -9,14 +9,14 @@ import { recordAudit } from "@/server/services/audit";
 type Params = { projectId: string };
 
 export const GET = withAuth<Params>(null, async (_req, { session }, params) => {
-  const project = await requireProject(params.projectId, session.orgId);
+  const project = await requireProject(params.projectId, session.orgId, session.userId, session.role);
   return NextResponse.json({ project });
 });
 
 export const PATCH = withAuth<Params>(
   "projects.manage",
   async (req, { session }, params) => {
-    const project = await requireProject(params.projectId, session.orgId);
+    const project = await requireProject(params.projectId, session.orgId, session.userId, session.role);
     const body = await parseBody(req, UpdateProjectSchema);
 
     const [updated] = await db

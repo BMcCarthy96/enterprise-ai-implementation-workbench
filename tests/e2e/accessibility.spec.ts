@@ -67,7 +67,7 @@ test.describe("authenticated accessibility gates", () => {
     await page.keyboard.press("Tab");
     await expect(coachmark.getByRole("button", { name: "Exit guided walkthrough" })).toBeFocused();
     await coachmark.getByRole("button", { name: "All steps" }).click();
-    const panel = page.getByTestId("recruiter-mode-panel");
+    const panel = page.getByTestId("guided-walkthrough-panel");
     await expect(panel).toHaveAttribute("aria-hidden", "false");
     await expect(panel.getByRole("button", { name: "Minimize guided walkthrough" })).toBeFocused();
     results = await new AxeBuilder({ page }).analyze();

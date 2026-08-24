@@ -34,6 +34,8 @@ const EnvSchema = z.object({
   PROMPT_VARIANT: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
   WORKBENCH_ENV_MODE: z.enum(["local", "showcase", "interview"]).default("local"),
   DEMO_MAX_GENERATION_JOBS: z.coerce.number().int().positive().optional(),
+  DEMO_MAX_ACTIVE_WORKSPACES: z.coerce.number().int().positive().optional(),
+  DEMO_MAX_ACTIVE_PER_NETWORK: z.coerce.number().int().positive().optional(),
   DEMO_MAX_DAILY_SPEND_USD: z.coerce.number().positive().optional(),
   DEMO_MAX_MONTHLY_SPEND_USD: z.coerce.number().positive().optional(),
   LOG_LEVEL: z

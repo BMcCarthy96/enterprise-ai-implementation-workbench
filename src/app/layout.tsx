@@ -12,13 +12,34 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const publicUrl =
+  process.env.NEXT_PUBLIC_APP_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "https://enterprise-ai-implementation-workbe.vercel.app");
+
 export const metadata: Metadata = {
+  metadataBase: new URL(publicUrl),
   title: {
     default: "Enterprise AI Implementation Workbench",
     template: "%s · Enterprise AI Implementation Workbench",
   },
   description:
     "Enterprise AI implementation workbench: requirements intake, AI scoping plans, approvals, delivery tracking, and audit trails.",
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: "Enterprise AI Implementation Workbench",
+    description:
+      "A working AI delivery workflow from requirements through human approval and tracked implementation.",
+    type: "website",
+    url: "/",
+  },
+  twitter: {
+    card: "summary",
+    title: "Enterprise AI Implementation Workbench",
+    description:
+      "A working AI delivery workflow from requirements through human approval and tracked implementation.",
+  },
 };
 
 export default function RootLayout({

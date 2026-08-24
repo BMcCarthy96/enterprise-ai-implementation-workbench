@@ -207,6 +207,36 @@ export const memberships = pgTable(
   ],
 );
 
+/**
+ * Customer-facing demo and production users are assigned to the customers
+ * they are allowed to see. Internal roles do not need rows here because their
+ * org membership already grants portfolio access.
+ */
+export const customerAssignments = pgTable(
+  "customer_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("customer_assignments_user_customer_unique").on(t.orgId, t.userId, t.customerId),
+    index("customer_assignments_org_user_idx").on(t.orgId, t.userId),
+    index("customer_assignments_org_customer_idx").on(t.orgId, t.customerId),
+  ],
+);
+
 export const identityConnections = pgTable(
   "identity_connections",
   {
@@ -321,6 +351,8 @@ export const webhookDeliveries = pgTable(
     status: text("status").notNull().default("queued"),
     attempts: integer("attempts").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    /** Lease fencing for a delivery request that outlives a worker process. */
+    claimExpiresAt: timestamp("claim_expires_at", { withTimezone: true }),
     responseStatus: integer("response_status"),
     responseBody: text("response_body"),
     lastError: text("last_error"),
@@ -330,6 +362,7 @@ export const webhookDeliveries = pgTable(
   (t) => [
     index("webhook_deliveries_org_created_idx").on(t.orgId, t.createdAt),
     index("webhook_deliveries_endpoint_idx").on(t.endpointId),
+    index("webhook_deliveries_claim_idx").on(t.status, t.claimExpiresAt),
     uniqueIndex("webhook_deliveries_event_endpoint_unique").on(t.endpointId, t.eventId),
   ],
 );
@@ -376,6 +409,9 @@ export const demoWorkspaces = pgTable(
       .unique()
       .references(() => users.id, { onDelete: "cascade" }),
     ipHash: text("ip_hash").notNull(),
+    // A separate coarse network hash is used only for abuse backstop counts;
+    // the visitor hash still keeps two people behind one NAT independent.
+    networkHash: text("network_hash"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     generationJobsUsed: integer("generation_jobs_used").notNull().default(0),
     uploadCount: integer("upload_count").notNull().default(0),
@@ -395,6 +431,7 @@ export const demoWorkspaces = pgTable(
   },
   (t) => [
     index("demo_workspaces_ip_expires_idx").on(t.ipHash, t.expiresAt),
+    index("demo_workspaces_network_expires_idx").on(t.networkHash, t.expiresAt),
     index("demo_workspaces_expires_idx").on(t.expiresAt),
   ],
 );
@@ -602,6 +639,34 @@ export const approvals = pgTable(
     index("approvals_org_status_idx").on(t.orgId, t.status),
     index("approvals_subject_idx").on(t.subjectType, t.subjectId),
     uniqueIndex("approvals_decision_key_unique").on(t.id, t.decisionKey),
+  ],
+);
+
+/** Durable handoff for rejection-triggered regeneration. The approval decision
+ * and this intent commit together; queue delivery can be retried afterwards. */
+export const approvalRegenerationIntents = pgTable(
+  "approval_regeneration_intents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    approvalId: uuid("approval_id")
+      .notNull()
+      .references(() => approvals.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
+    jobId: uuid("job_id"),
+    status: text("status").notNull().default("queued"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("approval_regeneration_intents_approval_unique").on(t.approvalId),
+    index("approval_regeneration_intents_org_status_idx").on(t.orgId, t.status),
   ],
 );
 

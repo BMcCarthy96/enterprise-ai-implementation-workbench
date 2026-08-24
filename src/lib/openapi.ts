@@ -89,7 +89,7 @@ export function buildOpenApiDocument() {
           tags: ["System"],
           summary: "Return public build and deployment metadata",
           description:
-            "Public, secret-free metadata used to label proof artifacts by deployment mode, provider mode, database mode, commit, and evidence version.",
+            "Public, secret-free metadata used to label evidence artifacts by deployment mode, provider mode, database mode, commit, and evidence version.",
           security: [],
           responses: { "200": jsonResponse("Build metadata") },
         },
@@ -117,8 +117,8 @@ export function buildOpenApiDocument() {
       },
       "/api/proof/manifest": {
         get: {
-          tags: ["Portfolio proof"],
-          summary: "Public, secret-free proof claims and offline evaluation metadata",
+          tags: ["Technical evidence"],
+          summary: "Public, secret-free evidence claims and offline evaluation metadata",
           security: [],
           responses: { "200": jsonResponse("Proof manifest") },
         },
@@ -182,6 +182,25 @@ export function buildOpenApiDocument() {
           summary: "Create a customer (requires customers.manage)",
           requestBody: body(CreateCustomerSchema),
           responses: { "201": jsonResponse("Customer created"), ...STD },
+        },
+      },
+      "/api/v1/customer-assignments": {
+        get: {
+          tags: ["Customers"],
+          summary: "List customer-to-stakeholder assignments (requires org.manage_members)",
+          responses: { "200": jsonResponse("Assignment list"), ...STD },
+        },
+        post: {
+          tags: ["Customers"],
+          summary: "Assign a customer stakeholder to a customer (requires org.manage_members)",
+          requestBody: body(z.object({ userId: z.string().uuid(), customerId: z.string().uuid() })),
+          responses: { "201": jsonResponse("Assignment created"), "200": jsonResponse("Assignment already existed"), ...STD },
+        },
+        delete: {
+          tags: ["Customers"],
+          summary: "Remove a customer stakeholder assignment (requires org.manage_members)",
+          parameters: [{ name: "assignmentId", in: "query", required: true, schema: { type: "string", format: "uuid" } }],
+          responses: { "200": jsonResponse("Assignment removed"), ...STD },
         },
       },
       "/api/v1/projects": {

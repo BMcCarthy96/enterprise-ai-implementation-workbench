@@ -12,6 +12,7 @@ export const GET = withAuth(null, async (req, { session }) => {
   const results = await searchWorkbench({
     orgId: session.orgId,
     role: session.role,
+    userId: session.userId,
     query,
   });
   return NextResponse.json({ query: query.trim(), results });

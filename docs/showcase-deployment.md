@@ -25,8 +25,12 @@ and quota accounting happen in the control Lambda.
 Create the AWS and Neon accounts yourself, then sign in to the tools you use
 for deployment. Account creation and billing details must stay in your hands.
 
-1. Create a Neon project in the same region family as the AWS stack. Enable
-   `vector` and copy both the pooled runtime URL and the direct admin URL.
+1. Create a Neon project in the same region family as the AWS stack and enable
+   `vector`. Keep the owner role for migrations. Create a separate login role
+   named `workbench_runtime`, then copy a pooled connection string that uses
+   that role for `DATABASE_URL`. Copy the owner role's direct connection string
+   for `DATABASE_ADMIN_URL`. Do not use the owner connection in Vercel or the
+   worker runtime.
 2. Create an AWS account with MFA. Configure a GitHub Actions OIDC deploy role.
    The role only needs permission to deploy this CDK stack.
 3. Create a Secrets Manager JSON value named
@@ -66,11 +70,23 @@ ai-provider: mock
 embedding-provider: mock
 vercel-team-slug: bmccarthy96s-projects
 vercel-project: enterprise-ai-implementation-workbench
+runtime-role: workbench_runtime
 ```
+
+The workflow confirms that `workbench_runtime` exists, grants the tables the
+application needs, and forces RLS on every policy-enabled table. It stops
+before deploying if the role is missing or can bypass RLS.
 
 The stack outputs `DocumentsBucketName`, `JobsQueueUrl`,
 `DemoControlFunctionArn`, and `VercelRuntimeRoleArn`. Keep those values for the
 Vercel setup. The workflow runs migrations before it reports success.
+
+The AWS workflow does not publish the Next.js site. Vercel builds the `main`
+branch separately, so run the **Public showcase smoke** workflow after each
+production Vercel deployment. Set the repository variable
+`SHOWCASE_BASE_URL` or pass `base_url` when dispatching it. A green AWS run
+proves the infrastructure and database gates; the hosted smoke is the check
+that proves the public link works.
 
 ## Configure Vercel
 
@@ -78,7 +94,7 @@ Set these production environment variables. Values marked `from CDK output`
 come from the AWS deployment:
 
 ```text
-DATABASE_URL=<Neon pooled runtime URL>
+DATABASE_URL=<Neon pooled URL for workbench_runtime>
 SESSION_SECRET=<same value as the runtime secret>
 APP_ENCRYPTION_KEY=<same value as the runtime secret>
 AWS_REGION=us-east-1
@@ -91,6 +107,8 @@ AI_PROVIDER=mock
 EMBEDDING_PROVIDER=mock
 WORKBENCH_ENV_MODE=showcase
 DEMO_MAX_GENERATION_JOBS=2
+DEMO_MAX_ACTIVE_WORKSPACES=20
+DEMO_MAX_ACTIVE_PER_NETWORK=4
 DEMO_MAX_DAILY_SPEND_USD=1
 DEMO_MAX_MONTHLY_SPEND_USD=15
 NODE_ENV=production
@@ -105,7 +123,8 @@ rate limit for `/api/demo/*` and `/api/v1/*`, then set the project’s spend and
 error alerts. Keep the project on a plan that allows the route’s 60-second
 function budget; creating or resetting a seeded workspace includes a cold
 Lambda invocation and several database writes. The app also enforces a
-workspace cap, two plan generations per browser visitor, and an expiry window
+workspace cap, two plan generations per browser visitor, a separate network
+backstop, and an expiry window
 in the database. A private HttpOnly visitor cookie keeps separate browsers on
 the same network from sharing a generation quota; the network address remains
 part of the key as a coarse abuse backstop.

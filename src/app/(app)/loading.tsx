@@ -1,10 +1,19 @@
 export default function AppLoading() {
   return (
-    <div className="mx-auto flex min-h-[45vh] max-w-3xl items-center justify-center">
-      <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm" role="status" aria-live="polite">
-        <span aria-hidden className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-cyan-600 motion-reduce:animate-none" />
-        Loading workspace…
+    <div
+      className="mx-auto max-w-7xl space-y-6"
+      role="status"
+      aria-live="polite"
+      aria-label="Loading workspace"
+    >
+      <div className="h-8 w-52 animate-pulse rounded-lg bg-slate-200 motion-reduce:animate-none" />
+      <div className="grid gap-4 md:grid-cols-3">
+        {["one", "two", "three"].map((key) => (
+          <div key={key} className="card h-28 animate-pulse bg-slate-100 motion-reduce:animate-none" />
+        ))}
       </div>
+      <div className="card min-h-64 animate-pulse bg-slate-100 motion-reduce:animate-none" />
+      <span className="sr-only">Loading workspace content</span>
     </div>
   );
 }

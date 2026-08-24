@@ -28,35 +28,44 @@ export function ApprovalActions({
     setError(null);
     const key = idempotencyKey.current ?? crypto.randomUUID();
     idempotencyKey.current = key;
-    const res = await fetch(`/api/v1/approvals/${approvalId}/decision`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Idempotency-Key": key },
-      body: JSON.stringify(
-        decision === "approved"
-          ? { decision, note: note || undefined }
-          : {
-              decision,
-              reasonCode,
-              note: note || undefined,
-              regenerate: subjectType === "plan" ? regenerate : undefined,
-            },
-      ),
-    });
-    if (res.ok) {
-      idempotencyKey.current = null;
-      const data = (await res.json().catch(() => ({}))) as {
-        regenerationJobId?: string;
-      };
-      if (data.regenerationJobId) {
-        // Keep the confirmation up briefly, then refresh the queue.
-        setDone("Rejected — generating a revised plan from your feedback…");
+    try {
+      const res = await fetch(`/api/v1/approvals/${approvalId}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": key },
+        body: JSON.stringify(
+          decision === "approved"
+            ? { decision, note: note || undefined }
+            : {
+                decision,
+                reasonCode,
+                note: note || undefined,
+                regenerate: subjectType === "plan" ? regenerate : undefined,
+              },
+        ),
+      });
+      if (res.ok) {
+        idempotencyKey.current = null;
+        const data = (await res.json().catch(() => ({}))) as {
+          regenerationJobId?: string;
+          regenerationQueued?: boolean;
+        };
+        const message = data.regenerationJobId || data.regenerationQueued
+          ? "Rejected. We’re generating a revised plan from your feedback."
+          : decision === "approved"
+            ? "Approved. The delivery view will update shortly."
+            : "Rejected. The decision is recorded.";
+        setDone(message);
+        // Give the user a stable confirmation before the server component
+        // reloads. This also makes transient hosted connection resets recoverable
+        // instead of turning a successful decision into a blank error page.
         setTimeout(() => router.refresh(), 1600);
       } else {
-        router.refresh();
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Decision failed");
+        setBusy(false);
       }
-    } else {
-      const data = await res.json().catch(() => null);
-      setError(data?.error ?? "Decision failed");
+    } catch {
+      setError("The request could not reach the workspace. Check your connection and try again.");
       setBusy(false);
     }
   }

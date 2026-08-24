@@ -21,7 +21,7 @@ describe("dashboard read-model helpers", () => {
     ]);
   });
 
-  it("formats queue age with compact, recruiter-friendly labels", () => {
+  it("formats queue age with compact dashboard labels", () => {
     const now = new Date("2026-08-09T12:00:00.000Z");
     expect(formatAge(new Date("2026-08-09T11:45:00.000Z"), now)).toBe("Just now");
     expect(formatAge(new Date("2026-08-08T10:00:00.000Z"), now)).toBe("1d old");

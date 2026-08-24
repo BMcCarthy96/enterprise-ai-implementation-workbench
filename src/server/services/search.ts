@@ -1,6 +1,7 @@
-import { and, eq, ilike, or } from "drizzle-orm";
+import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { can, type Role } from "@/lib/auth/rbac";
+import { assignedCustomerIds } from "@/server/services/access";
 
 /**
  * Global search across the tenant's delivery data — the data behind the ⌘K
@@ -52,6 +53,7 @@ export async function searchWorkbench(opts: {
   role: Role;
   query: string;
   perType?: number;
+  userId?: string;
 }): Promise<SearchResult[]> {
   const q = opts.query.trim();
   if (q.length < MIN_QUERY_LENGTH) return [];
@@ -60,6 +62,10 @@ export async function searchWorkbench(opts: {
   const like = `%${escapeLike(q)}%`;
   const perType = opts.perType ?? DEFAULT_PER_TYPE;
   const results: SearchResult[] = [];
+  const customerIds =
+    opts.role === "customer_stakeholder" && opts.userId
+      ? await assignedCustomerIds({ orgId: opts.orgId, userId: opts.userId, role: opts.role })
+      : null;
 
   if (types.has("project")) {
     // Match on the project name/description and on the customer name, so typing
@@ -79,6 +85,11 @@ export async function searchWorkbench(opts: {
       .where(
         and(
           eq(schema.projects.orgId, opts.orgId),
+          customerIds === null
+            ? undefined
+            : customerIds.length > 0
+              ? inArray(schema.projects.customerId, customerIds)
+              : sql`false`,
           or(
             ilike(schema.projects.name, like),
             ilike(schema.projects.description, like),

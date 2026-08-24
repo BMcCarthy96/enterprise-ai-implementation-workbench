@@ -9,7 +9,7 @@ async function login(page: Page, email: string) {
   await page.waitForURL("**/dashboard");
 }
 
-async function closeRecruiterGuide(page: Page) {
+async function closeGuidedWalkthrough(page: Page) {
   const coachmark = page.getByTestId("tour-coachmark");
   await coachmark.waitFor({ state: "visible", timeout: 5_000 }).catch(() => undefined);
   if (await coachmark.isVisible().catch(() => false)) {
@@ -19,7 +19,7 @@ async function closeRecruiterGuide(page: Page) {
     await expect(page.getByTestId("tour-open")).toBeVisible();
     return;
   }
-  const panel = page.getByTestId("recruiter-mode-panel");
+  const panel = page.getByTestId("guided-walkthrough-panel");
   if ((await panel.getAttribute("aria-hidden")) === "false") {
     await panel
       .getByRole("button", { name: "Minimize guided walkthrough" })
@@ -84,7 +84,7 @@ test.describe("interactive guided demo", () => {
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
     await expect(page.getByTestId("tour-coachmark")).toBeVisible();
-    await closeRecruiterGuide(page);
+    await closeGuidedWalkthrough(page);
 
     await expect(page.getByRole("link", { name: "3 Active projects" })).toBeVisible();
     await expect(page.getByRole("link", { name: "2 Pending approvals" })).toBeVisible();
@@ -130,7 +130,7 @@ test.describe("interactive guided demo", () => {
     await page.waitForURL("**/plan");
     await expect(coachmark.getByRole("heading", { name: "Plan and source" })).toBeVisible();
     await coachmark.getByRole("button", { name: "All steps" }).click();
-    const panel = page.getByTestId("recruiter-mode-panel");
+    const panel = page.getByTestId("guided-walkthrough-panel");
     await expect(panel).toHaveAttribute("aria-hidden", "false");
     await expect(panel.getByText("See how the project works")).toBeVisible();
     await expect(panel).not.toContainText(/recruiter/i);
@@ -145,13 +145,13 @@ test.describe("interactive guided demo", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
-    await closeRecruiterGuide(page);
+    await closeGuidedWalkthrough(page);
     const bar = page.getByTestId("demo-role-bar");
     await expect(bar).toBeVisible();
     await expect(bar.getByTestId("demo-role-implementation_manager")).toHaveAttribute("aria-pressed", "true");
     await page.getByTestId("tour-open").click();
     await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Portfolio health" })).toBeVisible();
-    await closeRecruiterGuide(page);
+    await closeGuidedWalkthrough(page);
 
     await bar.getByTestId("demo-role-solutions_engineer").click();
     await expect(bar.getByTestId("demo-role-solutions_engineer")).toHaveAttribute("aria-pressed", "true");
@@ -160,25 +160,25 @@ test.describe("interactive guided demo", () => {
     expect((await page.request.get("/api/v1/ai-runs")).status()).toBe(403);
     await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Requirements" })).toBeVisible();
     await expect(page.getByTestId("tour-spotlight")).toBeVisible();
-    await closeRecruiterGuide(page);
+    await closeGuidedWalkthrough(page);
 
     await bar.getByTestId("demo-role-customer_stakeholder").click();
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Operations" })).toHaveCount(0);
     await startRoleWalkthrough(page);
     await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Project overview" })).toBeVisible();
-    await closeRecruiterGuide(page);
+    await closeGuidedWalkthrough(page);
 
     await bar.getByTestId("demo-role-org_admin").click();
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Settings" })).toBeVisible();
     await startRoleWalkthrough(page);
     await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Portfolio health" })).toBeVisible();
-    await closeRecruiterGuide(page);
+    await closeGuidedWalkthrough(page);
 
     await bar.getByTestId("demo-role-implementation_manager").click();
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "AI Evidence" })).toBeVisible();
     await startRoleWalkthrough(page);
     await expect(page.getByTestId("tour-coachmark").getByRole("heading", { name: "Portfolio health" })).toBeVisible();
-    await closeRecruiterGuide(page);
+    await closeGuidedWalkthrough(page);
   });
 
   test("resolves every role-aware coachmark to permitted visible evidence", async ({ page }) => {
@@ -225,8 +225,13 @@ test.describe("interactive guided demo", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
-    await closeRecruiterGuide(page);
+    await closeGuidedWalkthrough(page);
     await expect(page.getByRole("button", { name: /Open navigation/ })).toBeVisible();
+    const mobileHeaderBox = await page.getByTestId("mobile-nav").boundingBox();
+    const personaBarBox = await page.getByTestId("demo-role-bar").boundingBox();
+    expect(mobileHeaderBox).not.toBeNull();
+    expect(personaBarBox).not.toBeNull();
+    expect(mobileHeaderBox!.y + mobileHeaderBox!.height).toBeLessThanOrEqual(personaBarBox!.y + 1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.getByRole("button", { name: /Open navigation/ }).click();
     const mobileNav = page.getByRole("navigation", { name: "Mobile main navigation" });
@@ -238,9 +243,30 @@ test.describe("interactive guided demo", () => {
     await page.keyboard.press("Escape");
     await page.getByTestId("demo-role-select").selectOption("org_admin");
     await expect(page.getByTestId("demo-role-select")).toHaveValue("org_admin");
-    await page.goto("/settings");
-    await expect(page).toHaveURL(/\/settings\/?$/);
+    await page.goto("/settings/members");
+    await expect(page).toHaveURL(/\/settings\/members\/?$/);
+    await expect(page.getByTestId("mobile-member-list").getByRole("listitem")).toHaveCount(4);
+    await expectNoInternalOverflow(page, "settings-nav");
+    await expect(page.getByRole("region", { name: "Customer access" })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+  test("renders a new customer assignment without a refresh", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Start 90-second tour" }).click();
+    await page.waitForURL("**/dashboard");
+    await closeGuidedWalkthrough(page);
+    await page.getByTestId("demo-role-org_admin").click();
+    await expect(page.getByTestId("demo-role-org_admin")).toHaveAttribute("aria-pressed", "true");
+    await page.goto("/settings/members");
+
+    await page.getByRole("combobox", { name: "Customer", exact: true }).selectOption({ label: "Harbor Health Clinic" });
+    await page.getByRole("button", { name: "Assign customer", exact: true }).click();
+    await expect(page.getByText("2 assignments", { exact: true })).toBeVisible();
+    const addedAssignment = page.getByTestId("customer-assignment").filter({ hasText: "Harbor Health Clinic" });
+    await expect(addedAssignment).toContainText("Demo Customer Stakeholder");
+    await expect(addedAssignment).toContainText("@demo.workbench.local");
   });
 
   test("adapts persona and project navigation from 320px through ultrawide", async ({ page }) => {
@@ -248,7 +274,7 @@ test.describe("interactive guided demo", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
-    await closeRecruiterGuide(page);
+    await closeGuidedWalkthrough(page);
 
     for (const width of [320, 390, 768, 1024, 1440, 1920]) {
       await page.setViewportSize({ width, height: 900 });
@@ -325,7 +351,7 @@ test.describe("interactive guided demo", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Start 90-second tour" }).click();
     await page.waitForURL("**/dashboard");
-    await closeRecruiterGuide(page);
+    await closeGuidedWalkthrough(page);
     await page.locator('[data-tour-target="dashboard-portfolio-health"]').evaluate((element) => element.remove());
     await page.getByTestId("tour-open").click();
     const coachmark = page.getByTestId("tour-coachmark");
@@ -405,13 +431,36 @@ test.describe("authentication & RBAC", () => {
       projects: Array<{ id: string }>;
     };
     const projectId = projects.projects[0].id;
+    await page.goto("/dashboard");
+    await expect(page.getByRole("link", { name: /View project status/ })).toHaveAttribute(
+      "href",
+      new RegExp(`/projects/${projectId}/timeline$`),
+    );
     expect(
       (await page.request.get(`/api/v1/projects/${projectId}/documents`)).status(),
     ).toBe(403);
-    await page.goto(`/projects/${projectId}/board`);
-    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`));
+    for (const internalRoute of ["requirements", "plan", "board", "documents", "activity"]) {
+      await page.goto(`/projects/${projectId}/${internalRoute}`);
+      await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`));
+    }
     await page.goto("/insights");
     await expect(page).toHaveURL(/\/dashboard/);
+  });
+
+  test("customer sessions cannot cross the tenant boundary", async ({ page }) => {
+    await login(page, "admin@cascade.dev");
+    const otherTenantProjects = (await (await page.request.get("/api/v1/projects")).json()) as {
+      projects: Array<{ id: string }>;
+    };
+    expect(otherTenantProjects.projects.length).toBeGreaterThan(0);
+    const foreignProjectId = otherTenantProjects.projects[0].id;
+
+    await page.context().clearCookies();
+    await login(page, "customer@brightlane.dev");
+    expect((await page.request.get(`/api/v1/projects/${foreignProjectId}`)).status()).toBe(404);
+    await page.goto(`/projects/${foreignProjectId}`);
+    await expect(page).toHaveURL(/\/projects\/?$/);
+    await expect(page.getByText("Cascade Delivery Group", { exact: false })).toHaveCount(0);
   });
 });
 
@@ -618,13 +667,16 @@ test.describe("seeded delivery data", () => {
     await expect(
       card.getByRole("checkbox", { name: /Automatically generate a revised plan/i }),
     ).toBeChecked();
-    await Promise.all([
+    const [decisionResponse] = await Promise.all([
       page.waitForResponse(
         (r) => r.url().includes("/decision") && r.request().method() === "POST",
       ),
       card.getByRole("button", { name: "Confirm rejection" }).click(),
     ]);
-    // The confirmation only renders when the API returned a regeneration job id.
+    const decision = (await decisionResponse.json()) as { regenerationJobId?: string; regenerationQueued?: boolean };
+    expect(decision.regenerationJobId || decision.regenerationQueued).toBeTruthy();
+    // The confirmation renders as soon as the durable intent is committed;
+    // the worker may attach the concrete job id a moment later.
     await expect(card.getByText(/generating a revised plan/i)).toBeVisible();
   });
 
@@ -722,7 +774,7 @@ test.describe("global search palette", () => {
   test("result types are gated by role", async ({ page }) => {
     // Customer stakeholder may only ever get project results.
     await login(page, "customer@brightlane.dev");
-    const denied = await page.request.get("/api/v1/search?q=Harbor%20Health");
+    const denied = await page.request.get("/api/v1/search?q=Order%20Intake");
     const cust = await denied.json();
     expect(cust.results.length).toBeGreaterThan(0);
     expect(cust.results.every((r: { type: string }) => r.type === "project")).toBe(

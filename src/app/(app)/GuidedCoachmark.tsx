@@ -14,7 +14,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TourStep } from "@/lib/tour";
 
-const COACHMARK_DESCRIPTION_ID = "recruiter-coachmark-description";
+const COACHMARK_DESCRIPTION_ID = "guided-coachmark-description";
 
 function isVisible(element: HTMLElement): boolean {
   const rect = element.getBoundingClientRect();
@@ -33,7 +33,7 @@ function findTarget(step: TourStep): HTMLElement | null {
   return null;
 }
 
-export function RecruiterCoachmark({
+export function GuidedCoachmark({
   step,
   stepIndex,
   totalSteps,
@@ -59,7 +59,7 @@ export function RecruiterCoachmark({
   const [unavailable, setUnavailable] = useState(false);
   const [arrowElement, setArrowElement] = useState<SVGSVGElement | null>(null);
   const coachmarkRef = useRef<HTMLDivElement | null>(null);
-  const titleId = `recruiter-coachmark-${step.id}`;
+  const titleId = `guided-coachmark-${step.id}`;
 
   const { refs, floatingStyles, context } = useFloating({
     open: true,
@@ -179,7 +179,7 @@ export function RecruiterCoachmark({
           <span className="font-semibold">Look here:</span> {step.evidence}
         </p>
         <p className="text-xs leading-5 text-slate-500">
-          This step points to <span className="font-semibold text-slate-700">{step.cta}</span>. The Next step button keeps the tour moving.
+          Use Next step when you&apos;re ready.
         </p>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, ne } from "drizzle-orm";
-import { db, schema, withTenantTransaction } from "@/db";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { afterTransactionCommit, db, dbAdmin, schema, withTenantTransaction } from "@/db";
 import { PlanContentSchema } from "@/lib/ai/planSchema";
 import { ApiError } from "@/lib/api";
 import { logger } from "@/lib/logger";
@@ -25,6 +25,8 @@ export interface DecisionInput {
 export interface DecisionResult {
   /** Set when a rejection kicked off an automatic revised-plan generation. */
   regenerationJobId?: string;
+  /** True once the durable regeneration intent is committed, even if dispatch is deferred. */
+  regenerationQueued?: boolean;
 }
 
 /**
@@ -51,7 +53,7 @@ export function approvalDecisionFingerprint(input: DecisionInput): string {
 export function replayDecision(
   existing: Pick<
     typeof schema.approvals.$inferSelect,
-    "decisionKey" | "decisionFingerprint" | "regenerationJobId"
+    "decisionKey" | "decisionFingerprint" | "regenerationJobId" | "subjectType"
   >,
   input: DecisionInput,
   fingerprint: string,
@@ -66,7 +68,13 @@ export function replayDecision(
       "IDEMPOTENCY_KEY_REUSED",
     );
   }
-  return { regenerationJobId: existing.regenerationJobId ?? undefined };
+  return {
+    regenerationJobId: existing.regenerationJobId ?? undefined,
+    regenerationQueued:
+      existing.subjectType === "plan" &&
+      input.decision === "rejected" &&
+      input.regenerate === true,
+  };
 }
 
 /**
@@ -171,6 +179,7 @@ async function decideApprovalInternal(
             decisionKey: true,
             decisionFingerprint: true,
             regenerationJobId: true,
+            subjectType: true,
           },
         });
         if (decided) {
@@ -227,7 +236,7 @@ async function decideApprovalInternal(
       // Closed feedback loop: on a plan rejection the reviewer can opt to have a
       // revised plan generated immediately. The worker's generation path already
       // pulls the latest rejection's reason + note into the prompt.
-      let regenerationJobId: string | undefined;
+      const result: DecisionResult = {};
       if (
         wantsRegeneration({
           decision: input.decision,
@@ -235,16 +244,38 @@ async function decideApprovalInternal(
           regenerate: input.regenerate,
         })
       ) {
-        regenerationJobId = await queueRegeneration(approval, input.decidedBy);
+        if (!approval.projectId) {
+          throw new Error("Plan approval is missing its project reference");
+        }
+        const [intent] = await db
+          .insert(schema.approvalRegenerationIntents)
+          .values({
+            orgId: approval.orgId,
+            approvalId: approval.id,
+            projectId: approval.projectId,
+            requestedBy: input.decidedBy,
+          })
+          .onConflictDoNothing({ target: schema.approvalRegenerationIntents.approvalId })
+          .returning({ id: schema.approvalRegenerationIntents.id });
+        // The intent is the durable user-visible outcome. A conflict here means
+        // the same approval already has one, so the response can still report
+        // that regeneration is queued.
+        result.regenerationQueued = true;
+        if (intent) {
+          await afterTransactionCommit(async () => {
+            try {
+              const jobId = await dispatchRegenerationIntent(intent.id);
+              if (jobId) result.regenerationJobId = jobId;
+            } catch (error) {
+              logger.error(
+                { err: String(error), intentId: intent.id },
+                "regeneration intent dispatch failed; reconciliation can retry it",
+              );
+            }
+          });
+        }
       }
-
-      if (regenerationJobId) {
-        await db
-          .update(schema.approvals)
-          .set({ regenerationJobId })
-          .where(eq(schema.approvals.id, approval.id));
-      }
-      return { regenerationJobId };
+      return result;
     },
     input.decidedBy,
   );
@@ -255,7 +286,11 @@ export interface BulkDecisionInput extends Omit<DecisionInput, "approvalId"> {
 }
 
 export interface BulkDecisionResult {
-  succeeded: Array<{ approvalId: string; regenerationJobId?: string }>;
+  succeeded: Array<{
+    approvalId: string;
+    regenerationJobId?: string;
+    regenerationQueued?: boolean;
+  }>;
   failed: Array<{ approvalId: string; status: number; message: string }>;
   regenerationJobCount: number;
 }
@@ -301,15 +336,15 @@ export async function decideApprovalsBulk(
   // De-dupe so a repeated id can't double-count against the same approval.
   for (const approvalId of [...new Set(input.approvalIds)]) {
     try {
-      const { regenerationJobId } = await decideApproval({
+      const { regenerationJobId, regenerationQueued } = await decideApproval({
         ...input,
         approvalId,
         idempotencyKey: input.idempotencyKey
           ? `${input.idempotencyKey}:${approvalId}`
           : `bulk-${randomUUID()}`,
       });
-      result.succeeded.push({ approvalId, regenerationJobId });
-      if (regenerationJobId) result.regenerationJobCount += 1;
+      result.succeeded.push({ approvalId, regenerationJobId, regenerationQueued });
+      if (regenerationJobId || regenerationQueued) result.regenerationJobCount += 1;
     } catch (err) {
       const status = err instanceof ApiError ? err.status : 500;
       const message = err instanceof Error ? err.message : "Decision failed";
@@ -327,51 +362,91 @@ export async function decideApprovalsBulk(
 }
 
 /**
- * Enqueue a revised-plan generation after a rejection. Best-effort: the human
- * rejection is already committed and must not be undone by a queue hiccup, so
- * failures here are logged and swallowed (the reviewer can regenerate manually).
+ * Enqueue a revised-plan generation after a rejection. The intent is already
+ * committed, so a queue failure leaves it ready for the scheduled reconciler.
  */
-async function queueRegeneration(
-  approval: typeof schema.approvals.$inferSelect,
-  decidedBy: string,
-): Promise<string | undefined> {
-  if (!approval.projectId) return undefined;
-  const projectId = approval.projectId;
-  try {
-    // Don't stack a second generation if one is already queued.
+async function dispatchRegenerationIntent(intentId: string): Promise<string | undefined> {
+  let dispatchedJobId: string | undefined;
+  const ownerIntent = await dbAdmin.query.approvalRegenerationIntents.findFirst({
+    where: eq(schema.approvalRegenerationIntents.id, intentId),
+  });
+  if (!ownerIntent) return undefined;
+  await withTenantTransaction(ownerIntent.orgId, async () => {
+    // A request callback and the scheduled reconciler can notice the same
+    // committed intent. Serialize them for this intent without leaving a lease
+    // behind if either process exits mid-transaction.
+    await db.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${intentId}::text, 0))`,
+    );
+    const intent = await db.query.approvalRegenerationIntents.findFirst({
+      where: eq(schema.approvalRegenerationIntents.id, intentId),
+    });
+    if (!intent || intent.jobId || intent.status === "dispatched") {
+      dispatchedJobId = intent?.jobId ?? undefined;
+      return;
+    }
     const queued = await db.query.jobs.findFirst({
       where: and(
-        eq(schema.jobs.projectId, projectId),
+        eq(schema.jobs.projectId, intent.projectId),
         eq(schema.jobs.type, "plan_generation"),
-        eq(schema.jobs.status, "queued"),
+        inArray(schema.jobs.status, ["queued", "running"]),
       ),
     });
-    if (queued) return queued.id;
+    if (queued) {
+      dispatchedJobId = queued.id;
+      await db
+        .update(schema.approvalRegenerationIntents)
+        .set({ jobId: queued.id, status: "dispatched", dispatchedAt: new Date(), lastError: null })
+        .where(eq(schema.approvalRegenerationIntents.id, intent.id));
+      await db.update(schema.approvals).set({ regenerationJobId: queued.id }).where(eq(schema.approvals.id, intent.approvalId));
+      return;
+    }
+    const reqCount = await db.$count(schema.requirements, eq(schema.requirements.projectId, intent.projectId));
+    if (reqCount === 0) {
+      await db.update(schema.approvalRegenerationIntents).set({ status: "failed", lastError: "No requirements remain for regeneration" }).where(eq(schema.approvalRegenerationIntents.id, intent.id));
+      return;
+    }
+    try {
+      dispatchedJobId = await createAndEnqueueJob({
+        orgId: intent.orgId,
+        projectId: intent.projectId,
+        type: "plan_generation",
+        requestedBy: intent.requestedBy ?? undefined,
+        auditMetadata: { trigger: "rejection_auto_regenerate", rejectedApprovalId: intent.approvalId },
+      });
+      await db
+        .update(schema.approvalRegenerationIntents)
+        .set({ jobId: dispatchedJobId, status: "dispatched", dispatchedAt: new Date(), lastError: null })
+        .where(eq(schema.approvalRegenerationIntents.id, intent.id));
+      await db.update(schema.approvals).set({ regenerationJobId: dispatchedJobId }).where(eq(schema.approvals.id, intent.approvalId));
+    } catch (error) {
+      await db
+        .update(schema.approvalRegenerationIntents)
+        .set({ status: "queued", lastError: error instanceof Error ? error.message : String(error) })
+        .where(eq(schema.approvalRegenerationIntents.id, intent.id));
+      throw error;
+    }
+  }, ownerIntent.requestedBy ?? undefined);
+  return dispatchedJobId;
+}
 
-    // Generation needs at least one requirement to work from.
-    const reqCount = await db.$count(
-      schema.requirements,
-      eq(schema.requirements.projectId, projectId),
-    );
-    if (reqCount === 0) return undefined;
-
-    return await createAndEnqueueJob({
-      orgId: approval.orgId,
-      projectId,
-      type: "plan_generation",
-      requestedBy: decidedBy,
-      auditMetadata: {
-        trigger: "rejection_auto_regenerate",
-        rejectedApprovalId: approval.id,
-      },
-    });
-  } catch (err) {
-    logger.error(
-      { err: String(err), projectId },
-      "auto-regeneration enqueue failed after plan rejection",
-    );
-    return undefined;
+/** Retry committed regeneration intents after a web request or worker crash. */
+export async function reconcileRegenerationIntents(limit = 10): Promise<number> {
+  const intents = await dbAdmin.query.approvalRegenerationIntents.findMany({
+    where: eq(schema.approvalRegenerationIntents.status, "queued"),
+    orderBy: (rows, { asc }) => [asc(rows.createdAt)],
+    limit,
+    columns: { id: true },
+  });
+  let dispatched = 0;
+  for (const intent of intents) {
+    try {
+      if (await dispatchRegenerationIntent(intent.id)) dispatched += 1;
+    } catch (error) {
+      logger.warn({ err: String(error), intentId: intent.id }, "regeneration intent remains queued");
+    }
   }
+  return dispatched;
 }
 
 async function applyPlanDecision(planId: string, input: DecisionInput) {

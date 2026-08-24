@@ -30,7 +30,7 @@ SELECT format('GRANT SELECT ON TABLE users TO %I', :'runtime_role') \gexec
 
 SELECT format(
   'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %s TO %I',
-  'organizations, memberships, identity_connections, external_identities, scim_tokens, directory_groups, webhook_endpoints, webhook_deliveries, retention_policies, retention_runs, demo_workspaces, customers, projects, requirements, plans, milestones, tasks, approvals, customer_updates, documents, document_chunks, plan_citations, audit_events, jobs, job_attempts, ai_runs, ai_calls, ai_run_evaluations',
+  'organizations, memberships, identity_connections, external_identities, scim_tokens, directory_groups, webhook_endpoints, webhook_deliveries, retention_policies, retention_runs, demo_workspaces, customer_assignments, approval_regeneration_intents, customers, projects, requirements, plans, milestones, tasks, approvals, customer_updates, documents, document_chunks, plan_citations, audit_events, jobs, job_attempts, ai_runs, ai_calls, ai_run_evaluations',
   :'runtime_role'
 ) \gexec
 

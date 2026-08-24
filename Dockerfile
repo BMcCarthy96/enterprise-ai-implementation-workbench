@@ -9,8 +9,9 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# next.config.ts sets output: "standalone".
-RUN npm run build
+# The container opts into Next.js standalone output; local and Vercel builds
+# keep the framework's normal production output.
+RUN WORKBENCH_STANDALONE=1 npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app

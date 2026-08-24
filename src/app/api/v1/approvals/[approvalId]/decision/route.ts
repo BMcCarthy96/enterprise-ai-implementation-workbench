@@ -28,6 +28,7 @@ export const POST = withAuth<Params>(
     return NextResponse.json({
       ok: true,
       regenerationJobId: result.regenerationJobId,
+      regenerationQueued: result.regenerationQueued === true,
     });
   },
 );

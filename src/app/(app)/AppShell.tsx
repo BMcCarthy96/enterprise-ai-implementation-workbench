@@ -13,7 +13,7 @@ import {
 } from "@/lib/tour";
 import type { Role } from "@/lib/auth/rbac";
 import { DemoPersonaSwitcher } from "./DemoPersonaSwitcher";
-import { RecruiterCoachmark } from "./RecruiterCoachmark";
+import { GuidedCoachmark } from "./GuidedCoachmark";
 
 type TourMode = "closed" | "checklist" | "coachmark";
 
@@ -30,12 +30,14 @@ function quotaBytes(bytes: number): string {
 
 export function AppShell({
   children,
+  mobileHeader,
   manifest,
   userId,
   role,
   demoQuota,
 }: {
   children: React.ReactNode;
+  mobileHeader: React.ReactNode;
   manifest: TourManifest;
   userId: string;
   role: Role;
@@ -313,15 +315,16 @@ export function AppShell({
 
   return (
     <>
-      {manifest.isDemo && manifest.demoPersonas && (
-        <DemoPersonaSwitcher
-          personas={manifest.demoPersonas}
-          role={role}
-          switchingRole={switchingRole}
-          onSwitch={(nextRole) => void switchRole(nextRole)}
-        />
-      )}
       <div className="min-h-screen">
+        {mobileHeader}
+        {manifest.isDemo && manifest.demoPersonas && (
+          <DemoPersonaSwitcher
+            personas={manifest.demoPersonas}
+            role={role}
+            switchingRole={switchingRole}
+            onSwitch={(nextRole) => void switchRole(nextRole)}
+          />
+        )}
         {children}
       </div>
 
@@ -357,7 +360,7 @@ export function AppShell({
             aria-label={manifest.isDemo ? "Guided walkthrough" : "Product tour"}
             aria-hidden={!checklistOpen}
             inert={!checklistOpen ? true : undefined}
-            data-testid="recruiter-mode-panel"
+            data-testid="guided-walkthrough-panel"
             className={`fixed inset-y-0 right-0 z-50 flex w-[min(92vw,23rem)] flex-col border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300 motion-reduce:transition-none ${checklistOpen ? "translate-x-0" : "pointer-events-none translate-x-full"}`}
           >
             <div className="border-b border-slate-100 bg-[#081526] px-5 py-5 text-white">
@@ -412,7 +415,7 @@ export function AppShell({
       )}
 
       {coachmarkOpen && activeStep && (
-        <RecruiterCoachmark
+        <GuidedCoachmark
           key={`${manifest.role}:${activeStep.id}`}
           step={activeStep}
           stepIndex={activeIndex}

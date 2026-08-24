@@ -9,7 +9,7 @@ import { completeDocumentUpload } from "@/server/services/documentUploads";
 type Params = { projectId: string };
 
 export const GET = withAuth<Params>("internal.view", async (_req, { session }, params) => {
-  await requireProject(params.projectId, session.orgId);
+  await requireProject(params.projectId, session.orgId, session.userId, session.role);
   const rows = await db.query.documents.findMany({
     where: eq(schema.documents.projectId, params.projectId),
     orderBy: desc(schema.documents.createdAt),
@@ -20,7 +20,7 @@ export const GET = withAuth<Params>("internal.view", async (_req, { session }, p
 export const POST = withAuth<Params>(
   "documents.upload",
   async (req, { session }, params) => {
-    const project = await requireProject(params.projectId, session.orgId);
+    const project = await requireProject(params.projectId, session.orgId, session.userId, session.role);
     const body = await parseBody(req, RegisterDocumentSchema);
 
     // The key must belong to this org+project namespace — a client cannot

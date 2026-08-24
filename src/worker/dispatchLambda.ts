@@ -1,8 +1,24 @@
-import { dispatchUndeliveredJobs } from "@/server/services/jobs";
+import {
+  dispatchUndeliveredJobs,
+  reclaimExpiredJobs,
+} from "@/server/services/jobs";
+import { reconcileRegenerationIntents } from "@/server/services/approvals";
 
-/** Scheduled safety net for committed jobs whose initial SQS publish failed. */
-export async function handler(): Promise<{ attempted: number; dispatched: number }> {
+/**
+ * Scheduled safety net for committed jobs whose initial SQS publish failed,
+ * expired worker leases, and rejection regeneration intents left by a web
+ * request that died after its database commit.
+ */
+export async function handler(): Promise<{
+  attempted: number;
+  dispatched: number;
+  reclaimed: number;
+  regenerated: number;
+}> {
+  const reclaimed = await reclaimExpiredJobs(100);
   const result = await dispatchUndeliveredJobs(100);
-  console.log(JSON.stringify({ ...result, action: "job_dispatch_reconciliation" }));
-  return result;
+  const regenerated = await reconcileRegenerationIntents(100);
+  const summary = { ...result, reclaimed, regenerated, action: "job_dispatch_reconciliation" };
+  console.log(JSON.stringify(summary));
+  return summary;
 }

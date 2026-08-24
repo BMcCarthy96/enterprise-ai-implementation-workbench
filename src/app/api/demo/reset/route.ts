@@ -52,6 +52,7 @@ export async function POST(req: Request) {
     const result = await replaceDemoWorkspaceControlled({
       session,
       visitorKey: visitor.key,
+      networkKey: visitor.networkKey,
     });
     const response = NextResponse.json({
       workspaceId: result.workspace.id,

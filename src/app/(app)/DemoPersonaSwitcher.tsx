@@ -19,7 +19,7 @@ export function DemoPersonaSwitcher({
 
   return (
     <div
-      className="sticky top-[4.5rem] z-30 border-b border-cyan-200 bg-white/95 px-4 py-2 shadow-sm backdrop-blur lg:top-0 lg:ml-60"
+      className="sticky top-[4.25rem] z-30 border-b border-cyan-200 bg-white/95 px-4 py-2 shadow-sm backdrop-blur lg:top-0 lg:ml-60"
       data-testid="demo-role-bar"
     >
       <div className="mx-auto grid min-w-0 gap-2 xl:grid-cols-[13rem_minmax(0,1fr)] xl:items-center xl:gap-4 xl:px-4">

@@ -77,7 +77,7 @@ export default async function DashboardPage() {
   const isInternal = can(session.role, "internal.view");
   const snapshot = await withTenantTransaction(
     session.orgId,
-    () => getDashboardSnapshot(session.orgId, isInternal),
+    () => getDashboardSnapshot(session.orgId, isInternal, session.userId, session.role),
     session.userId,
   );
 

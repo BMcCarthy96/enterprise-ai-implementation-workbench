@@ -242,7 +242,7 @@ export function buildRoleTourSteps(
 /**
  * Return a safe, role-compatible application path after an isolated demo
  * persona switch. Query strings and absolute URLs are intentionally discarded
- * so a recruiter-controlled path can never become an open redirect.
+ * so a shared checkpoint path can never become an open redirect.
  */
 export function safeDemoReturnPath(role: Role, pathname: string | null | undefined): string {
   const value = typeof pathname === "string" ? pathname.split(/[?#]/, 1)[0] : "";

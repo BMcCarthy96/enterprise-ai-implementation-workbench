@@ -8,7 +8,7 @@ type Params = { projectId: string };
 export const POST = withAuth<Params>(
   "updates.draft",
   async (_req, { session }, params) => {
-    const project = await requireProject(params.projectId, session.orgId);
+    const project = await requireProject(params.projectId, session.orgId, session.userId, session.role);
     const jobId = await createAndEnqueueJob({
       orgId: session.orgId,
       projectId: project.id,

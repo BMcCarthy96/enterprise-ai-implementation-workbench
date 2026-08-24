@@ -11,7 +11,7 @@ type Params = { projectId: string };
 export const GET = withAuth<Params>(
   "internal.view",
   async (_req, { session }, params) => {
-    await requireProject(params.projectId, session.orgId);
+    await requireProject(params.projectId, session.orgId, session.userId, session.role);
     const rows = await db.query.requirements.findMany({
       where: eq(schema.requirements.projectId, params.projectId),
       orderBy: desc(schema.requirements.createdAt),
@@ -23,7 +23,7 @@ export const GET = withAuth<Params>(
 export const POST = withAuth<Params>(
   "requirements.manage",
   async (req, { session }, params) => {
-    const project = await requireProject(params.projectId, session.orgId);
+    const project = await requireProject(params.projectId, session.orgId, session.userId, session.role);
     const body = await parseBody(req, CreateRequirementSchema);
 
     const [requirement] = await db

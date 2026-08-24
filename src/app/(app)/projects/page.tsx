@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema, withTenantTransaction } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { NewProjectButton } from "./NewProjectButton";
 import { TOUR_TARGETS } from "@/lib/tour";
+import { assignedCustomerIds } from "@/server/services/access";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,15 @@ export default async function ProjectsPage({
   const canManage = can(session.role, "projects.manage");
   const { rows, customers } = await withTenantTransaction(
     session.orgId,
-    async () => ({
+    async () => {
+      const customerIds = await assignedCustomerIds(session);
+      const customerScope =
+        customerIds === null
+          ? undefined
+          : customerIds.length > 0
+            ? inArray(schema.projects.customerId, customerIds)
+            : sql`false`;
+      return {
       rows: await db
         .select({
           project: schema.projects,
@@ -36,12 +45,20 @@ export default async function ProjectsPage({
           schema.customers,
           eq(schema.projects.customerId, schema.customers.id),
         )
-        .where(eq(schema.projects.orgId, session.orgId))
+        .where(and(eq(schema.projects.orgId, session.orgId), customerScope))
         .orderBy(desc(schema.projects.createdAt)),
       customers: await db.query.customers.findMany({
-        where: eq(schema.customers.orgId, session.orgId),
+        where: and(
+          eq(schema.customers.orgId, session.orgId),
+          customerIds === null
+            ? undefined
+            : customerIds.length > 0
+              ? inArray(schema.customers.id, customerIds)
+              : sql`false`,
+        ),
       }),
-    }),
+      };
+    },
     session.userId,
   );
   const filteredRows = rows.filter(({ project, customerName }) =>

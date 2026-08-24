@@ -21,7 +21,7 @@ type Params = { projectId: string };
 export const POST = withAuth<Params>(
   "plans.generate",
   async (_req, { session }, params) => {
-    const project = await requireProject(params.projectId, session.orgId);
+    const project = await requireProject(params.projectId, session.orgId, session.userId, session.role);
 
     const reqCount = await db.$count(
       schema.requirements,

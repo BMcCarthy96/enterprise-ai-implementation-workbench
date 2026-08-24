@@ -14,9 +14,34 @@ import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import { createSessionToken, type SessionPayload } from "@/lib/auth/session";
 import { findPublicConnection, connectionSecret, identityForSubject } from "@/server/services/identity";
 import type { Role } from "@/lib/auth/rbac";
+import { assertSafeWebhookTarget, isBlockedHost } from "@/server/services/webhooks";
 
 const STATE_COOKIE = "workbench_oidc_state";
 const CALLBACK_PATH = "/api/auth/oidc/callback";
+
+async function assertSafeIssuerUrl(raw: string): Promise<URL> {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("OIDC issuer URL is invalid");
+  }
+  const localDevelopment =
+    process.env.NODE_ENV !== "production" &&
+    ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  if (url.protocol !== "https:" && !localDevelopment) {
+    throw new Error("OIDC issuer URL must use HTTPS");
+  }
+  if (url.username || url.password || isBlockedHost(url.hostname) && !localDevelopment) {
+    throw new Error("OIDC issuer URL points to a private or credentialed host");
+  }
+  if (localDevelopment) return url;
+  await Promise.race([
+    assertSafeWebhookTarget(url),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("OIDC issuer validation timed out")), 3_000)),
+  ]);
+  return url;
+}
 
 export function oidcStateCookieName() {
   return STATE_COOKIE;
@@ -30,7 +55,7 @@ export async function createAuthorizationRequest(input: { connectionSlug: string
   const challenge = await calculatePKCECodeChallenge(verifier);
   const state = randomState();
   const nonce = randomNonce();
-  const config = await discovery(new URL(connection.issuerUrl), connection.clientId, undefined, connectionSecret(connection) ? ClientSecretPost(connectionSecret(connection)) : undefined);
+  const config = await discovery(await assertSafeIssuerUrl(connection.issuerUrl), connection.clientId, undefined, connectionSecret(connection) ? ClientSecretPost(connectionSecret(connection)) : undefined);
   const redirectUri = new URL(CALLBACK_PATH, input.origin).toString();
   const url = buildAuthorizationUrl(config, {
     redirect_uri: redirectUri,
@@ -50,7 +75,7 @@ export async function finishAuthorizationRequest(input: { requestUrl: URL; state
   const found = await findPublicConnection(state.connectionSlug);
   if (!found) throw new Error("OIDC connection is unavailable");
   const connection = found.connection;
-  const config = await discovery(new URL(connection.issuerUrl), connection.clientId, undefined, connectionSecret(connection) ? ClientSecretPost(connectionSecret(connection)) : undefined);
+  const config = await discovery(await assertSafeIssuerUrl(connection.issuerUrl), connection.clientId, undefined, connectionSecret(connection) ? ClientSecretPost(connectionSecret(connection)) : undefined);
   const tokens = await authorizationCodeGrant(config, input.requestUrl, { pkceCodeVerifier: state.verifier, expectedState: state.state, expectedNonce: state.nonce, idTokenExpected: true });
   const claims = tokens.claims();
   if (!claims?.sub) throw new Error("OIDC provider did not return a subject");

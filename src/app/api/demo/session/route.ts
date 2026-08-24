@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   }
   try {
     const visitor = demoVisitorKey(req.headers);
-    const result = await createDemoWorkspaceControlled(visitor.key);
+    const result = await createDemoWorkspaceControlled(visitor.key, visitor.networkKey);
     const response = NextResponse.json({
       workspaceId: result.workspace.id,
       expiresAt: result.workspace.expiresAt.toISOString(),

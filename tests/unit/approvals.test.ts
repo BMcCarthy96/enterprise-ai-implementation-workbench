@@ -49,8 +49,24 @@ describe("approval idempotency", () => {
       decisionKey: input.idempotencyKey ?? null,
       decisionFingerprint: fingerprint,
       regenerationJobId: "3f2504e0-4f89-41d3-9a0c-0305e82c3304",
+      subjectType: "plan",
     }, input, fingerprint)).toEqual({
       regenerationJobId: "3f2504e0-4f89-41d3-9a0c-0305e82c3304",
+      regenerationQueued: true,
+    });
+  });
+
+  it("keeps the durable regeneration state on a replay before a job id is attached", () => {
+    const input = decisionInput();
+    const fingerprint = approvalDecisionFingerprint(input);
+    expect(replayDecision({
+      decisionKey: input.idempotencyKey ?? null,
+      decisionFingerprint: fingerprint,
+      regenerationJobId: null,
+      subjectType: "plan",
+    }, input, fingerprint)).toEqual({
+      regenerationJobId: undefined,
+      regenerationQueued: true,
     });
   });
 
@@ -63,6 +79,7 @@ describe("approval idempotency", () => {
         decisionKey: original.idempotencyKey ?? null,
         decisionFingerprint: approvalDecisionFingerprint(original),
         regenerationJobId: null,
+        subjectType: "plan",
       }, changed, approvalDecisionFingerprint(changed));
     } catch (caught) {
       error = caught;

@@ -13,7 +13,7 @@ type Params = { projectId: string };
 export const GET = withAuth<Params>(
   "internal.view",
   async (_req, { session }, params) => {
-    const project = await requireProject(params.projectId, session.orgId);
+    const project = await requireProject(params.projectId, session.orgId, session.userId, session.role);
     return NextResponse.json(readProjectSlaPolicy(project.slaPolicy));
   },
 );

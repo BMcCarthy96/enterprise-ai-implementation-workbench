@@ -1,6 +1,6 @@
 ## What changed?
 
-<!-- Link the proof claim, issue, or recruiter checkpoint this improves. -->
+<!-- Link the proof claim, issue, or public-demo checkpoint this improves. -->
 
 ## Evidence
 

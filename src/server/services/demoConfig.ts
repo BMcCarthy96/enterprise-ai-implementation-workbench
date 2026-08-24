@@ -37,6 +37,7 @@ function readCookie(headers: Headers, name: string): string | null {
  */
 export function demoVisitorKey(headers: Headers): {
   key: string;
+  networkKey: string;
   visitorId: string;
   setCookie: boolean;
 } {
@@ -44,6 +45,7 @@ export function demoVisitorKey(headers: Headers): {
   const visitorId = existing && visitorIdPattern.test(existing) ? existing : randomUUID();
   return {
     key: `${clientIp(headers)}:${visitorId}`,
+    networkKey: clientIp(headers),
     visitorId,
     setCookie: visitorId !== existing,
   };

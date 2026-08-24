@@ -134,6 +134,20 @@
       "when": 1786306785068,
       "tag": "0018_reliability_followups",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787509868000,
+      "tag": "0019_customer_assignments",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787509869000,
+      "tag": "0020_webhook_delivery_leases",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,48 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Collector up",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "up{job=\"workbench-otel\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Spans received",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 9, "x": 6, "y": 0 },
+      "targets": [{ "expr": "sum(rate(otelcol_receiver_accepted_spans{job=\"workbench-otel\"}[5m]))", "legendFormat": "spans / sec", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Spans exported to Tempo",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 9, "x": 15, "y": 0 },
+      "targets": [{ "expr": "sum(rate(otelcol_exporter_sent_spans{job=\"workbench-otel\"}[5m]))", "legendFormat": "spans / sec", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "type": "text",
+      "title": "How to use this view",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 8 },
+      "options": { "mode": "markdown", "content": "### Workbench observability\n\nStart the app and worker with `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces`, then open the **AI Evidence** or **Operations** views. The collector forwards traces to Tempo and exposes its own health and throughput metrics to Prometheus.\n\nUse the **Tempo** data source to open a trace and follow the `tenant.transaction`, `job.enqueue`, `job.process`, and `approval.decide` spans. Payloads and tenant identifiers are intentionally excluded from span attributes." }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["workbench", "otel", "tempo"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "title": "Workbench observability",
+  "uid": "workbench-observability",
+  "version": 1
+}

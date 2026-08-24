@@ -33,12 +33,13 @@ Direct email, phone, and common account/identifier patterns are replaced with re
 
 - Malformed identifiers return `400 INVALID_IDENTIFIER`; valid foreign UUIDs return the same resource-not-found response as any other missing resource.
 - Every resource lookup is organization-scoped, and RLS policies repeat that condition at the database boundary (including AI traces, retrieval chunks/citations, and demo quota state).
+- Customer stakeholders have explicit `customer_assignments`; they only see assigned customer projects, timelines, and published updates. Internal roles keep the tenant-wide view, and the Members settings page is where assignments are granted or revoked.
 - Production deployments must use a pooled runtime role through `DATABASE_URL` and a separate owner/admin role through `DATABASE_ADMIN_URL`. After the platform creates both roles, run `scripts/provision-runtime-role.sql` as the admin role. It grants the complete application-table surface (including `job_attempts`), preserves the append-only audit boundary, establishes default privileges, and forces every policy-enabled table through RLS without creating or exposing credentials.
 - Seed, migrations, and expired-demo cleanup use the admin connection and are never reachable from user routes.
 
 ## Abuse controls and demo limits
 
-The public demo creates a synthetic organization per visitor/IP hash for 60 minutes. It caps active workspaces, AI generations, uploads, file size, total storage, and aggregate demo model spend. A quota check takes a transaction-scoped global admission lock, validates the workspace quota, and reserves an estimated model cost before a job is enqueued; completion releases that reservation while actual provider usage remains in `ai_runs`. Exhausted limits return `429 DEMO_LIMIT_REACHED` or `503 DEMO_BUDGET_EXHAUSTED`. An hourly cleanup job removes expired organizations and their exact S3 prefixes.
+The public demo creates a synthetic organization per browser visitor for 60 minutes. It caps the global active workspace count and also applies a separate hashed network backstop, so one browser does not consume another browser's generation quota while a single network cannot create unlimited isolated workspaces. It also caps AI generations, uploads, file size, total storage, and aggregate demo model spend. A quota check takes a transaction-scoped global admission lock, validates the workspace quota, and reserves an estimated model cost before a job is enqueued; completion releases that reservation while actual provider usage remains in `ai_runs`. Exhausted limits return `429 DEMO_LIMIT_REACHED` or `503 DEMO_BUDGET_EXHAUSTED`. An hourly cleanup job removes expired organizations and their exact S3 prefixes.
 
 ## Lifecycle, incident, and certification boundary
 

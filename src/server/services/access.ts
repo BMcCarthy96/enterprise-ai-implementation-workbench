@@ -2,6 +2,43 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { ApiError } from "@/lib/api";
+import type { Role } from "@/lib/auth/rbac";
+
+type ScopedSession = { orgId: string; userId: string; role: Role };
+
+/**
+ * Return the customer scope for a session. `null` means an internal role has
+ * the whole tenant; an empty list means a customer user has no assignments.
+ */
+export async function assignedCustomerIds(session: ScopedSession): Promise<string[] | null> {
+  if (session.role !== "customer_stakeholder") return null;
+  const rows = await db
+    .select({ customerId: schema.customerAssignments.customerId })
+    .from(schema.customerAssignments)
+    .where(
+      and(
+        eq(schema.customerAssignments.orgId, session.orgId),
+        eq(schema.customerAssignments.userId, session.userId),
+      ),
+    );
+  return rows.map((row) => row.customerId);
+}
+
+export async function assertCustomerAccess(
+  session: ScopedSession,
+  customerId: string,
+): Promise<void> {
+  if (session.role !== "customer_stakeholder") return;
+  const assignment = await db.query.customerAssignments.findFirst({
+    where: and(
+      eq(schema.customerAssignments.orgId, session.orgId),
+      eq(schema.customerAssignments.userId, session.userId),
+      eq(schema.customerAssignments.customerId, customerId),
+    ),
+    columns: { id: true },
+  });
+  if (!assignment) throw new ApiError(404, "Project not found");
+}
 
 const UuidSchema = z.string().uuid();
 
@@ -19,7 +56,12 @@ export function uuidParam(value: string | undefined, name: string): string {
  * resource goes through these, so a valid session for org A can never read or
  * mutate org B's data even with a guessed UUID.
  */
-export async function requireProject(projectId: string, orgId: string) {
+export async function requireProject(
+  projectId: string,
+  orgId: string,
+  userId?: string,
+  role?: Role,
+) {
   projectId = uuidParam(projectId, "projectId");
   const project = await db.query.projects.findFirst({
     where: and(
@@ -28,6 +70,9 @@ export async function requireProject(projectId: string, orgId: string) {
     ),
   });
   if (!project) throw new ApiError(404, "Project not found");
+  if (userId && role) {
+    await assertCustomerAccess({ orgId, userId, role }, project.customerId);
+  }
   return project;
 }
 

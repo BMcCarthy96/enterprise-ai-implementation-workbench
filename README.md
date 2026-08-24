@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/actions/workflows/ci.yml/badge.svg)](https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench/actions/workflows/ci.yml)
 
+**[Open the live demo](https://enterprise-ai-implementation-workbe.vercel.app/demo?checkpoint=portfolio-health)** · **[View the source](https://github.com/BMcCarthy96/enterprise-ai-implementation-workbench)** · [Read the walkthrough](docs/demo-walkthrough.md)
+
 A multi-tenant internal platform for software implementation teams: it turns messy customer requirements into AI-drafted implementation plans, routes every AI output through **human approval**, materializes approved plans into milestone/task delivery boards, and keeps a complete audit trail — on an **AWS-native backbone** (PostgreSQL, S3, SQS, Bedrock) that runs 100% locally via Docker + LocalStack with zero cloud cost.
 
 > **TL;DR demo flow:** capture requirements → ground an AI scoping job with tenant-filtered document chunks → trace generation, validation, repair, cost, and citations → route the plan to a human approval queue → materialize approved milestones/tasks → keep every decision in the audit log.
@@ -30,7 +32,7 @@ It uses Vercel for the web app, Neon for Postgres, and the existing AWS worker
 stack. The public URL should point to:
 
 ```text
-https://<your-vercel-domain>/demo?checkpoint=portfolio-health
+https://enterprise-ai-implementation-workbe.vercel.app/demo?checkpoint=portfolio-health
 ```
 
 That route creates an expiring synthetic workspace and starts the walkthrough.
@@ -124,7 +126,7 @@ flowchart LR
 
 **Key decisions (and why):**
 
-- **DB row = source of truth for jobs; SQS message = delivery only.** Messages carry just a `jobId`. Publication runs only after the job transaction commits; `dispatched_at` plus a scheduled reconciler repairs transient publish failures. Duplicate delivery (SQS is at-least-once) is safe because workers claim queued work with a lease, heartbeat it during execution, and reclaim expired running jobs. Attempts and failure reasons remain visible on the Ops page.
+- **DB row = source of truth for jobs; SQS message = delivery only.** Messages carry just a `jobId`. Publication runs only after the job transaction commits; `dispatched_at` plus a scheduled reconciler repairs transient publish failures, expired leases, and committed regeneration intents. Duplicate delivery (SQS is at-least-once) is safe because workers claim queued work with a lease, heartbeat it during execution, and reclaim expired running jobs. Attempts and failure reasons remain visible on the Ops page.
 - **AI output never acts on its own.** Plan generation stores a `pending_approval` plan and opens an approval. Only a human decision materializes milestones/tasks. Customer updates follow the same gate — nothing reaches the customer role without sign-off.
 - **Bulk review without hiding failures.** A reviewer can apply one decision across a selection (`POST /api/v1/approvals/bulk`). Each item stays an independent audited transaction, so a stale selection — someone else already decided one — yields a *partial success* report (`succeeded[]` / `failed[]` / summary) instead of rolling back the reviewer's other valid decisions. Fan-out is capped at 50 ids per request since each rejection can queue a regeneration.
 - **Closed feedback loop.** When a plan is rejected, the reviewer's reason code + note are captured and — with one checkbox, on by default — a revised generation is queued automatically, carrying that feedback into the next prompt; the resulting version records what feedback it addressed. A per-version diff (milestones added/removed, task/risk deltas) makes re-approval fast. This is the loop the Insights dashboard then measures.
@@ -140,6 +142,8 @@ erDiagram
     organizations ||--o{ memberships : has
     users ||--o{ memberships : joins
     organizations ||--o{ customers : serves
+    users ||--o{ customer_assignments : receives
+    customers ||--o{ customer_assignments : scopes
     customers ||--o{ projects : commissions
     projects ||--o{ requirements : captures
     projects ||--o{ plans : "AI-drafted versions"
@@ -152,7 +156,7 @@ erDiagram
     organizations ||--o{ jobs : runs
 ```
 
-29 tables, with tenant-owned delivery, AI observability, retrieval, citations, enterprise controls, and ephemeral demo workspace data. `audit_events` is append-only; `plans` are versioned (approve v2 → v1 becomes `superseded`).
+31 tables, with tenant-owned delivery, AI observability, retrieval, citations, enterprise controls, customer assignments, and ephemeral demo workspace data. `audit_events` is append-only; `plans` are versioned (approve v2 → v1 becomes `superseded`).
 
 ## The approval workflow (sequence)
 

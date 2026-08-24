@@ -9,7 +9,7 @@ type Params = { projectId: string };
 export const GET = withAuth<Params>(
   "internal.view",
   async (_req, { session }, params) => {
-    await requireProject(params.projectId, session.orgId);
+    await requireProject(params.projectId, session.orgId, session.userId, session.role);
     const rows = await db.query.plans.findMany({
       where: eq(schema.plans.projectId, params.projectId),
       orderBy: desc(schema.plans.version),

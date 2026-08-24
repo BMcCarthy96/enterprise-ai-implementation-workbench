@@ -116,7 +116,22 @@ jobs:
         run: |
           nohup npm run worker > worker.log 2>&1 &
           echo $! > worker.pid
-          sleep 3
+          for attempt in $(seq 1 30); do
+            if grep -q "worker started; polling for jobs" worker.log; then
+              break
+            fi
+            if ! kill -0 "$(cat worker.pid)" 2>/dev/null; then
+              cat worker.log
+              echo "The worker exited before the async smoke flow started"
+              exit 1
+            fi
+            sleep 1
+          done
+          grep -q "worker started; polling for jobs" worker.log || {
+            cat worker.log
+            echo "The worker did not become ready within 30 seconds"
+            exit 1
+          }
       - name: Run e2e tests
         env:
           E2E_WORKER: "1"
@@ -131,7 +146,7 @@ jobs:
           retention-days: 7
 
   proof-bundle:
-    name: Publish commit-bound recruiter proof
+    name: Publish commit-bound portfolio evidence
     needs: [quality, e2e]
     if: ${{ needs.quality.result == 'success' && needs.e2e.result == 'success' }}
     runs-on: ubuntu-latest
@@ -155,9 +170,9 @@ jobs:
           PROOF_EVIDENCE_COMMAND: Required jobs - quality and Playwright e2e
           PROOF_EVIDENCE_VERIFIED_AT: ${{ steps.provenance.outputs.verified_at }}
           PROOF_EVIDENCE_CONCLUSION: success
-      - name: Upload recruiter evidence bundle
+      - name: Upload portfolio evidence bundle
         uses: actions/upload-artifact@v4
         with:
-          name: recruiter-proof-bundle-${{ github.sha }}
+          name: portfolio-evidence-bundle-${{ github.sha }}
           path: artifacts/proof-bundle/
           retention-days: 30

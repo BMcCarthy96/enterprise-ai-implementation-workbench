@@ -32,7 +32,7 @@ export default function LoginPage() {
           </section>
           {passwordLoginEnabled && (
             <>
-              <div className="my-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500" aria-hidden="true">
+              <div className="my-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-600" aria-hidden="true">
                 <span className="h-px flex-1 bg-gray-200" />
                 <span>Existing workspace</span>
                 <span className="h-px flex-1 bg-gray-200" />
